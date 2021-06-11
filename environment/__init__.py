@@ -9,13 +9,13 @@ device = torch.device('cuda:{}'.format(gpu_ids[0]) if gpu_ids else 'cpu')
 
 def get_model(name):
     try:
-        # instanciate cycle gan architecture used in CT2UStransfer
+        # instanciate cyclegan architecture used in CT2UStransfer (this is also the default architecture recommended by the authors)
         model = ResnetGenerator(1, 1, 64, norm_layer=nn.InstanceNorm2d, use_dropout=True, n_blocks=9)
         state_dict = torch.load(os.path.abspath("/models/%s.pth"%name), map_location='cpu')
         model.load_state_dict(state_dict)
         model.to(device)
     except:
-        raise ValueError('unknown ``opt.env_model`` passed. possible options: <CycleGAN_standard,CycleGAN_noIdtLoss,CycleGAN_LPIPS,CycleGAN_LPIPS_noIdtLoss,CycleGAN_LPIPS_noIdtLoss_lambda_AB_1>')
+        raise ValueError('unknown ``name`` passed. possible options: <CycleGAN_standard,CycleGAN_noIdtLoss,CycleGAN_LPIPS,CycleGAN_LPIPS_noIdtLoss,CycleGAN_LPIPS_noIdtLoss_lambda_AB_1>')
     
     return model
 
