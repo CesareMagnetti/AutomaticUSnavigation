@@ -85,5 +85,8 @@ class SimpleQNetwork(nn.Module):
         state_dict = torch.load(savepath, map_location='cpu')
         self.load_state_dict(state_dict)
 
+    def count_parameters(self):
+        return sum(p.numel() for p in self.parameters() if p.requires_grad)
+
 
         

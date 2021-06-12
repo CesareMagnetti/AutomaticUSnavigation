@@ -131,21 +131,20 @@ class BaseEnvironment():
     
     @staticmethod
     def render(state, seg=None, titleText=None, show=False):
+        # slice was normilized, hence multiply by 255
+        state = state.cpu().numpy().squeeze()*255
         if seg is not None:
-            # slice was normilized, hence multiply by 255
-            state = state.cpu().numpy().squeeze()*255
             seg = seg.cpu().numpy().squeeze()
             # stack image and segmentation, progate through channel dim since black and white
             # must do this to call ``ImageSequenceClip`` later.
             image = np.hstack([state[..., np.newaxis] * np.ones(3), seg[..., np.newaxis] * np.ones(3)])
         else:
-            image = state.cpu().numpy().squeeze()
+            image = state[..., np.newaxis] * np.ones(3)
 
         # put title on image
         if titleText is not None:
             title = np.zeros((40, image.shape[1], image.shape[2]))
             font = cv2.FONT_HERSHEY_SIMPLEX
-
             # get boundary of this text
             textsize = cv2.getTextSize(titleText, font, 1, 2)[0]
             # get coords based on boundary

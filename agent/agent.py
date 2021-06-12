@@ -36,6 +36,7 @@ class Agent():
 
         # Q-Network
         self.qnetwork_local = QNetwork(state_size, action_size, Nagents, seed, **kwargs).to(self.device)
+        print("Q Network instanciated: (%d parameters)"%self.qnetwork_local.count_parameters())
         print(self.qnetwork_local)
         self.qnetwork_target = QNetwork(state_size, action_size, Nagents, seed, **kwargs).to(self.device)
         self.optimizer = optim.Adam(self.qnetwork_local.parameters(), lr=LR)
