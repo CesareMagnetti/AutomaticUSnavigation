@@ -8,7 +8,5 @@ for now we have implemented the baseline plane sampling for the agent to move ar
 <div align="center">
     <img width="70%" src="trajectories/sample.gif", alt="random walk through the CT volume and corresponding rewards."
 	title="random walk through the CT volume and corresponding rewards." ><br>
-	Fig 1: A random walk throug the CT volume with the corresponding (not normalized) reward. On the left we have the sampled CT planes<br>
-  by an agent following a random walk, on the right we have the corresponding segmentation. The reward corresponds to the number of pixels<br>
-  in the 2D slice that belong to the left ventricle.<br>
+	Fig 1: A random walk throug the CT volume with the corresponding (not normalized) reward. On the left we have the sampled CT planes by an agent following a 	    random walk, on the right we have the corresponding segmentation. The reward corresponds to the number of pixels in the 2D slice that belong to the left     	 ventricle.<br>
 </div>
