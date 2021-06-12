@@ -36,6 +36,7 @@ class Agent():
 
         # Q-Network
         self.qnetwork_local = QNetwork(state_size, action_size, Nagents, seed, **kwargs).to(self.device)
+        print(self.qnetwork_local)
         self.qnetwork_target = QNetwork(state_size, action_size, Nagents, seed, **kwargs).to(self.device)
         self.optimizer = optim.Adam(self.qnetwork_local.parameters(), lr=LR)
 
@@ -68,16 +69,14 @@ class Agent():
             eps (float): epsilon, for epsilon-greedy action selection
         """
         state = state.float().unsqueeze(0).to(self.device)
-        print("state: ", state.shape)
         self.qnetwork_local.eval()
         with torch.no_grad():
             Qs = self.qnetwork_local(state)
-            print("Qs: ", Qs.shape)
         self.qnetwork_local.train()
 
         # Epsilon-greedy action selection
         if random.random() > eps:
-            return [self.mapActionToIncrement(Q.max()[1].item()) for Q in Qs]
+            return [self.mapActionToIncrement(torch.argmax(Q, dim=1).item()) for Q in Qs]
         else:
             return [self.mapActionToIncrement(random.choice(np.arange(self.action_size)))for _ in range(self.Nagents)] 
 

@@ -15,13 +15,13 @@ class ConvBlock(nn.Module):
 class HeadBlock(nn.Module):
     def __init__(self, inFeatures, actionSize, norm=nn.BatchNorm1d):
         super(HeadBlock, self).__init__()
-        self.block = nn.Sequential(nn.Linear(inFeatures, inFeatures//2),
-                                   norm(inFeatures//2),
+        self.block = nn.Sequential(nn.Linear(inFeatures, inFeatures//4),
+                                   norm(inFeatures//4),
                                    nn.ReLU(),
-                                   nn.Linear(inFeatures//2, inFeatures//2),
-                                   norm(inFeatures//2),
+                                   nn.Linear(inFeatures//4, inFeatures//4),
+                                   norm(inFeatures//4),
                                    nn.ReLU(),
-                                   nn.Linear(inFeatures//2, actionSize))
+                                   nn.Linear(inFeatures//4, actionSize))
 
     def forward(self, x):
         return self.block(x)
@@ -32,7 +32,7 @@ class SimpleQNetwork(nn.Module):
     """
     very simple CNN backbone followed by N heads, one for each agent.
     """
-    def __init__(self, state_size, action_size, Nheads, seed, Nblocks=6, downsampling=2, num_features=8):
+    def __init__(self, state_size, action_size, Nheads, seed, Nblocks=7, downsampling=2, num_features=4):
         """
         params
         ======
@@ -49,7 +49,7 @@ class SimpleQNetwork(nn.Module):
         self.seed = torch.manual_seed(seed)
 
         # build convolutional backbone
-        cnn = [ConvBlock(state_size[0], num_features, 3, 1, 1)]
+        cnn = [ConvBlock(state_size[0], num_features, 3, downsampling, 1)]
         for i in range(Nblocks-1):
             cnn.append(ConvBlock(num_features*2**i, num_features*2**(i+1), 3, downsampling, 1))
         cnn.append(nn.Conv2d(num_features*2**(i+1), num_features*2**(i+2), 3, downsampling, 1))

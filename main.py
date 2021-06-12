@@ -20,17 +20,17 @@ args = parser.parse_args()
 if __name__=="__main__":
 
     # instanciate environment
-    env = BaseEnvironment(args.dataroot, args.volume_id, args.segmentation_id)
+    env = BaseEnvironment(args.dataroot, args.volume_id, args.segmentation_id, use_cuda=True)
     state, _, _ = env.sample()
 
     # instanciate agent (3 agents: 1 for each point. 6 actions: up/down, left/right, forward/backwards)
-    agent = Agent(state_size=state.shape, action_size=6, Nagents=3, seed=1)
+    agent = Agent(state_size=state.shape, action_size=6, Nagents=3, seed=1, use_cuda=True)
 
     # watch an untrained agent
     frames=[]
     for i in tqdm(range(100)):
         actions = agent.act(state)
-        frames.append(env.render(state, titleText='time step: %'%(i+1)))
+        frames.append(env.render(state, titleText='time step: %d'%(i+1)))
         state, reward, _ = env.step(*actions)
     
     # save all frames as a GIF
