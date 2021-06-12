@@ -3,26 +3,16 @@ import torch.nn as nn
 import functools
 import os
 
-gpu_ids = [i for i in range(torch.cuda.device_count())]
-device = torch.device('cuda:{}'.format(gpu_ids[0]) if gpu_ids else 'cpu')
-
-
-def get_model(name):
-    try:
-        # instanciate cyclegan architecture used in CT2UStransfer (this is also the default architecture recommended by the authors)
-        model = ResnetGenerator(1, 1, 64, norm_layer=nn.InstanceNorm2d, use_dropout=True, n_blocks=9)
-        state_dict = torch.load(os.path.abspath("/models/%s.pth"%name), map_location='cpu')
-        model.load_state_dict(state_dict)
-        model.to(device)
-    except:
-        raise ValueError('unknown ``name`` passed. possible options: <CycleGAN_standard,CycleGAN_noIdtLoss,CycleGAN_LPIPS,CycleGAN_LPIPS_noIdtLoss,CycleGAN_LPIPS_noIdtLoss_lambda_AB_1>')
-    
+def get_model(name, use_cuda=False):
+    # instanciate cyclegan architecture used in CT2UStransfer (this is also the default architecture recommended by the authors)
+    model = JohnsonResnetGenerator(1, 1, 64, norm_layer=nn.InstanceNorm2d, use_dropout=False, n_blocks=9)
+    state_dict = torch.load(os.path.join(os.getcwd(), "environment", "models", "%s.pth"%name), map_location='cpu')
+    model.load_state_dict(state_dict)
     return model
-
 
 # THE FOLLOWING MODELS WHERE TAKEN FROM THE CYCLEGAN-PIX2PIX REPO: https://github.com/junyanz/pytorch-CycleGAN-and-pix2pix
 
-class ResnetGenerator(nn.Module):
+class JohnsonResnetGenerator(nn.Module):
     """Resnet-based generator that consists of Resnet blocks between a few downsampling/upsampling operations.
     We adapt Torch code and idea from Justin Johnson's neural style transfer project(https://github.com/jcjohnson/fast-neural-style)
     """
@@ -39,7 +29,7 @@ class ResnetGenerator(nn.Module):
             padding_type (str)  -- the name of padding layer in conv layers: reflect | replicate | zero
         """
         assert(n_blocks >= 0)
-        super(ResnetGenerator, self).__init__()
+        super(JohnsonResnetGenerator, self).__init__()
         if type(norm_layer) == functools.partial:
             use_bias = norm_layer.func == nn.InstanceNorm2d
         else:
@@ -136,3 +126,4 @@ class ResnetBlock(nn.Module):
         """Forward function (with skip connections)"""
         out = x + self.conv_block(x)  # add skip connections
         return out
+
