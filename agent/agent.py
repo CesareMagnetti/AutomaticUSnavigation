@@ -45,11 +45,13 @@ class Agent():
         self.loss = kwargs.pop('loss', nn.SmoothL1Loss())
 
         # Replay memory
-        self.memory = ReplayBuffer(action_size, BUFFER_SIZE, BATCH_SIZE, seed)
+        self.memory = ReplayBuffer(action_size, BUFFER_SIZE, BATCH_SIZE, seed, self.device)
         # Initialize time step (for updating every UPDATE_EVERY steps)
         self.t_step = 0
     
     def step(self, state, actions, reward, next_state):
+        # convert increment actions back to their ids
+        actions = [self.mapIncrementToAction(a) for a in actions]
         # Save experience in replay memory
         self.memory.add(state, actions, reward, next_state)
         
@@ -94,20 +96,20 @@ class Agent():
         Qs = self.qnetwork_local(states)
         MaxQs = self.qnetwork_target(next_states)
 
+        self.optimizer.zero_grad()
         for Q, A, MaxQ in zip(Qs, actions.T, MaxQs):
             # gather Q value for the action taken
-            Q = Q.gather(1, A)
+            Q = Q.gather(1, A.unsqueeze(-1))
             # get the value of the best action in the next state
             # detach to only optimize local network
-            MaxQ = MaxQ.max(1)[0].detach()
+            MaxQ = MaxQ.max(1)[0].detach().unsqueeze(-1)
             # backup the expected value of this action  
-            Qhat = rewards + gamma*MaxQ
+            Qhat = rewards.unsqueeze(-1) + gamma*MaxQ
             # evalauate TD error
             loss = self.loss(Q, Qhat)
-            # optimize local network parameters
-            self.optimizer.zero_grad()
-            loss.backward()
-            self.optimizer.step()
+            # retain graph because we will backprop multiple times through the backbone cnn
+            loss.backward(retain_graph=True)
+        self.optimizer.step()
 
         # ------------------- update target network ------------------- #
         self.soft_update(self.qnetwork_local, self.qnetwork_target, TAU)                     
@@ -153,11 +155,40 @@ class Agent():
         
         return incr
 
+    @staticmethod
+    def mapIncrementToAction(incr):
+        """ 
+        using the following convention:
+        0: +1 in x coordinate
+        1: -1 in x coordinate
+        2: +1 in y coordinate
+        3: -1 in y coordinate
+        4: +1 in z coordinate
+        5: -1 in z coordinate
+        """
+
+        if incr[0] == 1:
+            action = 0
+        elif incr[0] == -1:
+            action = 1
+        elif incr[1] == 1:
+            action = 2
+        elif incr[1] == -1:
+            action = 3
+        elif incr[2] == 1:
+            action = 4
+        elif incr[2] == -1:
+            action = 5
+        else:
+            raise ValueError('unknown increment: {}.'.format(incr))
+        
+        return action
+
 
 class ReplayBuffer:
     """Fixed-size buffer to store experience tuples."""
 
-    def __init__(self, action_size, buffer_size, batch_size, seed):
+    def __init__(self, action_size, buffer_size, batch_size, seed, device):
         """Initialize a ReplayBuffer object.
         Params
         ======
@@ -165,10 +196,12 @@ class ReplayBuffer:
             buffer_size (int): maximum size of buffer
             batch_size (int): size of each training batch
             seed (int): random seed
+            device (torch.device): cpu or gpu
         """
         self.action_size = action_size
         self.memory = deque(maxlen=buffer_size)  
         self.batch_size = batch_size
+        self.device = device
         # note that action is going to contain the action of each agent
         self.experience = namedtuple("Experience", field_names=["state", "action", "reward", "next_state"])
         self.seed = random.seed(seed)
@@ -182,10 +215,10 @@ class ReplayBuffer:
         """Randomly sample a batch of experiences from memory."""
         experiences = random.sample(self.memory, k=self.batch_size)
 
-        states = torch.cat([e.state for e in experiences if e is not None]).float().to(self.device)
+        states = torch.cat([e.state for e in experiences if e is not None]).float().unsqueeze(1).to(self.device)
         actions = torch.from_numpy(np.vstack([e.action for e in experiences if e is not None])).long().to(self.device)
         rewards = torch.from_numpy(np.vstack([e.reward for e in experiences if e is not None])).float().to(self.device)
-        next_states = torch.cat([e.next_state for e in experiences if e is not None]).float().to(self.device)
+        next_states = torch.cat([e.next_state for e in experiences if e is not None]).float().unsqueeze(1).to(self.device)
         return (states, actions, rewards, next_states)
 
     def __len__(self):
