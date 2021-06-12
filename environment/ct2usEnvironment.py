@@ -1,5 +1,5 @@
-from baseEnvironment import BaseEnvironment
-from utils import get_model
+from .baseEnvironment import BaseEnvironment
+from .utils import get_model
 import torch
 import torchvision.transforms as transforms 
 

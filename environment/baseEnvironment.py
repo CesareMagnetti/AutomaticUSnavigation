@@ -129,16 +129,14 @@ class BaseEnvironment():
                                 self.sy,
                                 self.sz])
     
+    @staticmethod
     def render(state, seg=None, titleText=None, show=False):
-
-        # slice was normilized, hence multiply by 255
-        state*=255
-        
-        # stack image and segmentation, progate through channel dim since black and white
-        # must do this to call ``ImageSequenceClip`` later.
         if seg is not None:
-            state = state.cpu().numpy().squeeze()
+            # slice was normilized, hence multiply by 255
+            state = state.cpu().numpy().squeeze()*255
             seg = seg.cpu().numpy().squeeze()
+            # stack image and segmentation, progate through channel dim since black and white
+            # must do this to call ``ImageSequenceClip`` later.
             image = np.hstack([state[..., np.newaxis] * np.ones(3), seg[..., np.newaxis] * np.ones(3)])
         else:
             image = state.cpu().numpy().squeeze()
