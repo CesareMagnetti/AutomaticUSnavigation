@@ -1,10 +1,11 @@
 import numpy as np
 import SimpleITK as sitk
 import os
+import torch
+import cv2
 
 class BaseEnvironment():
     def __init__(self, dataroot, volume_id, segmentation_id, start_pos = None, scale_intensity=True, rewardID=2885, **kwargs):
-        
         # load CT volume
         itkVolume = sitk.ReadImage(os.path.join(dataroot, volume_id+".nii.gz"))
         Volume = sitk.GetArrayFromImage(itkVolume)
@@ -20,9 +21,12 @@ class BaseEnvironment():
             Volume = intensity_scaling(Volume, pmin=kwargs.pop('pmin', 150), pmax=kwargs.pop('pmax', 200),
                                        nmin=kwargs.pop('nmin', 0), nmax=kwargs.pop('nmax', 255))
         
-        # save as class attribute
-        self.Volume = Volume
-        self.Segmentation = Segmentation
+        # get the devce for gpu dependencies
+        self.device = torch.device('cuda' if kwargs.pop('use_cuda', False) else 'cpu')
+
+        # save CT volume and segmentation as class attributes
+        self.Volume = torch.tensor(Volume/Volume.max(), requires_grad=False).to(self.device)
+        self.Segmentation = torch.tensor(Segmentation, requires_grad=False).to(self.device)
 
         # ID of the segmentation corresponding to the anatomical structure we are trying to observe.
         self.rewardID = rewardID
@@ -44,9 +48,7 @@ class BaseEnvironment():
                                     self.sy,
                                     self.sz])
 
-
     def sample(self, oob_black=True):
-
         # get plane coefs
         a,b,c,d = get_plane_coefs(self.pointA, self.pointB, self.pointC)
 
@@ -97,13 +99,12 @@ class BaseEnvironment():
         # the left ventricle ID in the segmentation is 2885. let's count the number
         # of pixels in the left ventricle as a fit function, the agent will have to
         # find a view that maximizes the amount of left ventricle present in the image.
-        unique, counts = np.unique(segmentation, return_counts=True)
-        reward = counts[unique==self.rewardID]
+        unique, counts = torch.unique(segmentation, return_counts=True)
+        reward = (counts[unique==self.rewardID]/counts.sum()).item() # normalize by all pixels count
 
-        return plane, reward, segmentation
+        return plane.unsqueeze(0), reward, segmentation
 
     def step(self, dirA, dirB, dirC):
-
         # update current position
         self.pointA += dirA
         self.pointB += dirB
@@ -113,7 +114,60 @@ class BaseEnvironment():
         nextState, reward, segmentation = self.sample()
 
         return nextState, reward, segmentation
+    
+    def reset(self):
+        # get a meaningful starting plane (these hardcoded ranges will yield views close to 4-chamber view) 
+        self.pointA = np.array([np.random.uniform(low=0.85, high=1)*self.sx,
+                                0,
+                                np.random.uniform(low=0.7, high=0.92)*self.sz])
 
+        self.pointB = np.array([np.random.uniform(low=0.3, high=0.43)*self.sx,
+                                self.sy,
+                                0])
+
+        self.pointC = np.array([np.random.uniform(low=0.3, high=0.43)*self.sx,
+                                self.sy,
+                                self.sz])
+    
+    def render(state, seg=None, titleText=None, show=False):
+
+        # slice was normilized, hence multiply by 255
+        state*=255
+        
+        # stack image and segmentation, progate through channel dim since black and white
+        # must do this to call ``ImageSequenceClip`` later.
+        if seg is not None:
+            state = state.cpu().numpy().squeeze()
+            seg = seg.cpu().numpy().squeeze()
+            image = np.hstack([state[..., np.newaxis] * np.ones(3), seg[..., np.newaxis] * np.ones(3)])
+        else:
+            image = state.cpu().numpy().squeeze()
+
+        # put title on image
+        if titleText is not None:
+            title = np.zeros((40, image.shape[1], image.shape[2]))
+            font = cv2.FONT_HERSHEY_SIMPLEX
+
+            # get boundary of this text
+            textsize = cv2.getTextSize(titleText, font, 1, 2)[0]
+            # get coords based on boundary
+            textX = int((title.shape[1] - textsize[0]) / 2)
+            textY = int((title.shape[0] + textsize[1]) / 2)
+            # put text on the title image
+            cv2.putText(title, titleText, (textX, textY ), font, 1, (255, 255, 255), 2)
+            # stack title to image
+            image = np.vstack([title, image])
+        
+        if show:
+            # Show the image
+            cv2.imshow("Environment", image)
+            # This line is necessary to give time for the image to be rendered on the screen
+            cv2.waitKey(1)
+        else:
+            return image
+
+
+# ==== HELPER FUNCTIONS ====
 def intensity_scaling(ndarr, pmin=None, pmax=None, nmin=None, nmax=None):
     pmin = pmin if pmin != None else ndarr.min()
     pmax = pmax if pmax != None else ndarr.max()
@@ -127,7 +181,6 @@ def intensity_scaling(ndarr, pmin=None, pmax=None, nmin=None, nmax=None):
     return ndarr 
 
 def get_plane_coefs(p1, p2, p3):
-
     # These two vectors are in the plane
     v1 = p3 - p1
     v2 = p2 - p1
