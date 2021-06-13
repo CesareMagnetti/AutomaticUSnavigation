@@ -34,13 +34,13 @@ pip install -r requirements
 ```
 2. run an untrained agent on our default volume. It will save a 250 steps navigation to ```./results```.
 
-``bash
+```bash
 python main.py -r /vol/biomedic3/hjr119/XCAT/generation/
 ```
 
 3. train a DQN agent to navigate towards maximizing the number of pixels in the Left Ventricle (or any other anatomical structure). It will then save 250 steps of the learned greedy trajectory.
 
-``bash
+```bash
 python main.py -r /vol/biomedic3/hjr119/XCAT/generation/ --train
 ```
 
