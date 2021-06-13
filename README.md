@@ -10,3 +10,14 @@ for now we have implemented the baseline plane sampling for the agent to move ar
 	title="random walk through the CT volume and corresponding rewards." ><br>
 	Fig 1: A random walk throug the CT volume with the corresponding (not normalized) reward. On the left we have the sampled CT planes by an agent following a 	    random walk, on the right we have the corresponding segmentation. The reward corresponds to the number of pixels in the 2D slice that belong to the left     	 ventricle.<br>
 </div>
+
+## example untrained agent exploiting it's value function
+
+The following pictures shows an untrained agent navigating throughout the CT volume.
+
+<div align="center">
+    <img width="70%" src="results/sample_experiment.gif", alt="untrained agent acting greedily."
+	title="untrained agent acting greedily." ><br>
+	Fig 2: An untrained agent acting greedily. Our full agent consists of 3 sub-agents, each controlling the movement of 1 point in a 3D space. As each agent 	  moves around the 3 points will sample a particular view of the CT volume.<br>
+</div>
+
