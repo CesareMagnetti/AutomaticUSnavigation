@@ -39,7 +39,10 @@ def train(n_episodes=2000, max_t=1000, eps_start=1.0, eps_end=0.01, eps_decay=0.
         for t in range(max_t):
             actions = agent.act(state, eps)
             next_state, reward, _ = env.step(*actions)
-            agent.step(state, actions, reward, next_state)
+            agent.step(state.detach().cpu(),
+                       actions,
+                       reward,
+                       next_state.detach().cpu())
             state = next_state
             score += reward
 
