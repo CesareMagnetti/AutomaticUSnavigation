@@ -16,6 +16,7 @@ parser.add_argument('--ct2us_model_name', '-model', type=str, default='CycleGAN_
                                                                       'available models can be found at ./models')
 parser.add_argument('--savedir', '-s', type=str, default='./results/', help='where to save the trajectory.')
 parser.add_argument('--name', '-n', type=str, default='sample_experiment', help='name of the experiment.')
+parser.add_argument('--train', action='store_true', help='if training the agent before testing it.')
 
 args = parser.parse_args()
 
@@ -58,7 +59,9 @@ def train(n_episodes=2000, max_t=1000, eps_start=1.0, eps_end=0.01, eps_decay=0.
         #     break
     return scores
 
-def test(max_t=1000):
+def test(max_t=250):
+    env.reset()
+    state, _, _ = env.sample()
     frames=[]
     for i in tqdm(range(max_t)):
         actions = agent.act(state)
@@ -84,7 +87,8 @@ if __name__=="__main__":
     agent = Agent(state_size=state.shape, action_size=6, Nagents=3, seed=1, use_cuda=True)
 
     # train agent
-    train()
+    if args.train:
+        train()
     
     # test agent
     test()
