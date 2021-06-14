@@ -11,13 +11,21 @@ import numpy as np
 # parsing arguments
 parser = argparse.ArgumentParser(description='test script to verify we can sample trajectories from the environment.')
 parser.add_argument('--dataroot', '-r',  type=str, help='path to the XCAT CT volumes.')
+parser.add_argument('--train', action='store_true', help='if training the agent before testing it.')
+parser.add_argument('--savedir', '-s', type=str, default='./results/', help='where to save the trajectory.')
+parser.add_argument('--name', '-n', type=str, default='sample_experiment', help='name of the experiment.')
 parser.add_argument('--volume_id', '-vol_id', type=str, default='default_512_CT_1', help='filename of the CT volume.')
 parser.add_argument('--segmentation_id', '-seg_id', type=str, default='default_512_SEG_1', help='filename of the segmented CT volume.')
 parser.add_argument('--ct2us_model_name', '-model', type=str, default='CycleGAN_LPIPS_noIdtLoss_lambda_AB_1', help='filename for the state dict of the ct2us model (.pth) file.\n'\
                                                                       'available models can be found at ./models')
-parser.add_argument('--savedir', '-s', type=str, default='./results/', help='where to save the trajectory.')
-parser.add_argument('--name', '-n', type=str, default='sample_experiment', help='name of the experiment.')
-parser.add_argument('--train', action='store_true', help='if training the agent before testing it.')
+parser.add_argument('--batch_size', type=int, default=32, help="batch size for the replay buffer.")
+parser.add_argument('--buffer_size', type=int, default=int(1e5), help="capacity of the replay buffer.")
+parser.add_argument('--gamma', type=int, default=0.99, help="discount factor.")
+parser.add_argument('--tau', type=int, default=1e-3, help="weight for soft update of target parameters.")
+parser.add_argument('--learning_rate', '-lr', type=float, default=5e-4, help="learning rate for the q network.")
+parser.add_argument('--update_every', type=int, default=4, help="how often to update the network, in steps.")
+
+
 
 args = parser.parse_args()
 
@@ -79,7 +87,7 @@ def test(max_t=250):
     for i in tqdm(range(max_t)):
         actions = agent.act(state)
         state, reward, _ = env.step(*actions)
-        frames.append(env.render(state, titleText='time step: {}    reward:{:.5f}'.format(i+1, reward)))
+        frames.append(env.render(state, titleText='time step: {} reward:{:.5f}'.format(i+1, reward)))
   
     # save all frames as a GIF
     if not os.path.exists(os.path.join(args.savedir, args.name)):
