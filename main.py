@@ -78,15 +78,15 @@ def test(max_t=250):
     frames=[]
     for i in tqdm(range(max_t)):
         actions = agent.act(state)
-        frames.append(env.render(state, titleText='time step: %d'%(i+1)))
         state, reward, _ = env.step(*actions)
-    
+        frames.append(env.render(state, titleText='time step: {}\treward:{:.5f}'.format(i+1, reward)))
+  
     # save all frames as a GIF
-    if not os.path.exists(args.savedir):
-        os.makedirs(args.savedir)
+    if not os.path.exists(os.path.join(args.savedir, args.name)):
+        os.makedirs(os.path.join(args.savedir, args.name))
 
     clip = ImageSequenceClip(frames, fps=10)
-    clip.write_gif(os.path.join(args.savedir, args.name+'.gif'), fps=10)
+    clip.write_gif(os.path.join(args.savedir, args.name, 'navigation.gif'), fps=10)
 
 
 
