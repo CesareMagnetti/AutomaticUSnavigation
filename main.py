@@ -79,7 +79,7 @@ def test(max_t=250):
     for i in tqdm(range(max_t)):
         actions = agent.act(state)
         state, reward, _ = env.step(*actions)
-        frames.append(env.render(state, titleText='time step: {}\treward:{:.5f}'.format(i+1, reward)))
+        frames.append(env.render(state, titleText='time step: {}    reward:{:.5f}'.format(i+1, reward)))
   
     # save all frames as a GIF
     if not os.path.exists(os.path.join(args.savedir, args.name)):
