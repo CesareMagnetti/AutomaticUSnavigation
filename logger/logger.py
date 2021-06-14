@@ -2,68 +2,73 @@ import numpy as np
 from matplotlib import pyplot as plt
 import os
 import warnings
-import json
 
 class Log():
-    def __init__(self, name):
+    def __init__(self, name, max_i, max_j=None):
         """
         handles logs of an input variable.
 
         Params
         ======
         name (str): name of the variable we are logging
+        max_i (int): maximum number of rows in the log array (i.e. number of episodes)
+        max_j (int): maxim number of columns in the log array (i.e. number of steps per episode) (default=None)
         Attributes
         ======
-            logs (dict[list]): each element in the dict will be one episode. each element in the list will be one time step.
+            logs (ndarray): each row corresponds to one episode. each column to one time step.
 
         """
-        self.name=name
-        self.logs = {1: []}
-        self.N = 1
+        self.name, self.max_i, self.max_j = name, max_i, max_j
+        shape = (max_i, max_j) if max_j else (max_i,1)
+        self.logs = np.zeros(shape, dtype=float)
+        self.i, self.j = 0, 0
     
-    def push(self, item, episode=None):
-        if episode is None:
-            self.logs[self.N].append(item)
-        else:
-            self.logs[episode].append(item)
+    def push(self, item):
+        self.logs[self.i, self.j] = item
+        self.j+=1
 
-    def pop(self, episode=None):
-        # REMOVES ITEM FROM LOGS
-        if episode is None:
-            return self.logs.pop(self.N)
+    def __getitem__(self, i, j=None):
+        if j:
+            try: return self.logs[i, j].item()
+            except: return self.logs[i, j]
         else:
-            return self.logs.pop(episode)
+            try: return self.logs[i].item()
+            except: return self.logs[i]
 
-    def get(self, episode=None):
-        # DOES NOT REMOVE ITEM FROM LOGS
-        if episode is None:
-            return self.logs[self.N]
-        else:
-            return self.logs[episode]
-  
+    def current(self):
+        try: return self.logs[self.i].item()
+        except: return self.logs[self.i]
+
     def mean(self, episodes=None, axis=0):
-        if episodes:
-            return np.mean([log for i, (_,log) in enumerate(self.logs.items()) if i in episodes], axis=axis)
-        else:
-            return np.mean([log for _,log in self.logs.items()], axis=0)
+        if not episodes: logs = self.logs.copy()
+        else: logs = self.logs[episodes, ...].copy()
+        try: return np.mean(logs, axis=axis).item()
+        except: return np.mean(logs, axis=axis)
     
     def std(self, episodes=None, axis=0):
-        if episodes:
-            return np.mean([log for i, (_,log) in enumerate(self.logs.items()) if i in episodes], axis=axis)
-        else:
-            return np.mean([log for _,log in self.logs.items()], axis=axis)
+        if not episodes: logs = self.logs.copy()
+        else: logs = self.logs[episodes, ...].copy()
+        try: return np.std(logs, axis=axis).item()
+        except: return np.std(logs, axis=axis)
 
-    def cumulative_sum(self, episode=None, GAMMA=1):
-        if not episode:
-            episode = self.N
-        logs = self.logs[episode].copy()
-        return sum([l*GAMMA**i for i,l in enumerate(reversed(logs))])
+    def cumulative_sum(self, episodes=None, GAMMA=1, REVERSED=True):
+        logs = self.logs[episodes, ...].copy() if episodes else self.logs.copy()
+        # build discount array
+        discount = [GAMMA**i for i in range(self.max_j)]
+        if REVERSED: discount = discount[::-1]
+        discount = np.array(discount)
+        # discount the logs along last dimension and sum
+        ret = np.cumsum(logs*discount, axis=-1)
+        # this will return a scalar if single element array
+        try: return ret.item() 
+        except: return ret
 
     def step(self):
-        self.N+=1
+        # reset indeces for next episode
+        self.i, self.j = self.i+1, 0
 
     def __len__(self):
-        return self.N
+        return self.i
 
 class Logger():
     def __init__(self, savedir, *args):
@@ -74,56 +79,50 @@ class Logger():
         for log in self.logs:
             self.logs[log].step()
             
-    def push(self, log):
-        self.logs[log.name] = log   
+    def push(self, **kwargs):
+        for key, val in kwargs.items():
+            self.logs[key].push(val)    
 
-    def pop(self, item=None):
-        # REMOVES ITEM FROM self.logs AND RETURNS IT
-        return self.logs.pop(item)  
+    def save_current_logs_to_txt(self):
+        # get current episode for fname
+        episode = next(iter(self.logs.values())).i
+        fname = "episode%d.txt"%(episode+1)
 
-    def get(self, item):
-        # DOES NOT REMOVE ITEM FROM self.logs
-        return self.log.get(item)  
-
-    def save_logs_to_txt(self, fname):
-        if not ".txt" in fname:
-            fname+=".txt"
-        if not os.path.exists(os.path.join(self.savedir, "logs")):
+        if not os.path.exists(os.path.join(self.savedir, "logs")): 
             os.makedirs(os.path.join(self.savedir, "logs"))
-        with open(os.path.join(self.savedir, "logs", fname), 'w') as file:
-            file.write(json.dumps(self.logs))
-    
-    def load_logs_from_txt(self, fname):
-        with open(os.path.join(self.savedir, "logs", fname)) as file:
-            self.logs = json.loads(file) 
+        # gather logs up to current episode
+        logs = {}
+        for key, log in self.logs.items():
+            logs[key] = log.logs[:log.i, ...]
 
-    def visuals(self, names=None, episode=None, show=False, save=False):
+        
+        np.savez(os.path.join(self.savedir, "logs", fname), **logs)
 
-        if show or save:
-            if names is None:
-                names = [log for log in self.logs]
+    def current_visuals(self, with_total_reward=True, show=False, save=False):
 
-            # get size of grid for subplots
-            N = len(names)
-            nrows = int(np.sqrt(N))
-            ncols = int(N/nrows)
-            if not N%nrows == 0:
-                nrows+=1
-            
-            fig, axs = plt.subplots(nrows, ncols)
-            fig.suptitle("visulas at episode: {}".format(episode if episode else "LAST"))
-            fname = "episode{}".format(episode if episode else "LAST")
+        if not (show or save):
+            warnings.warn("called Visualize.visuals() but did not pass in neither ``save`` or ``show`` flags. Nothing will be executed.")
+        else:
 
-            for name, ax in zip(names, axs.ravel()):
-                try:
-                    ax.plot(range(len(self.logs[name].get(episode))), self.logs[name].get(episode))
+            # get current episode
+            episode = next(iter(self.logs.values())).i
+            # get a copy of current results
+            logs = self.logs.copy()
+            # calculate total collected rewards in previous episodes if needed
+            if "rewards" in logs and with_total_reward:
+                logs["rewards_total"] = np.sum(logs["rewards"][:episode], axis=-1)
+
+            # plot visuals
+            fig, axs = plt.subplots(len(logs), 1)
+            fig.suptitle("visuals at episode:%d"%(episode+1))
+            for name, ax in zip(logs, axs.ravel()):
+                if not "total" in name:
+                    ax.plot(logs[name].current())
                     ax.set_xlabel("time-step")
-                except:
-                    ax.plot(range(len(self.logs[name].get(episode))), self.logs[name])
-                    ax.set_xlabel("episodes")
+                else:
+                    ax.plot(logs[name])
+                    ax.set_xlabel("episodes")                    
                 ax.set_title(name)
-                
-
             plt.tight_layout()
 
             if show:
@@ -131,7 +130,4 @@ class Logger():
             elif save:
                 if not os.path.exists(os.path.join(self.savedir, "logs", "visuals")):
                     os.makedirs(os.path.join(self.savedir, "logs", "visuals"))
-                plt.savefig(os.path.join(self.savedir, "logs", "visuals", fname))
-        
-        else:
-            warnings.warn("called Visualize.visuals() but did not pass in neither ``save`` or ``show`` flags. Nothing will be executed.")
+                plt.savefig(os.path.join(self.savedir, "logs", "visuals", "episode{}".format(episode+1)))

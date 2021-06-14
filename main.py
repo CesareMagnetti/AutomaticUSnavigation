@@ -21,7 +21,7 @@ parser.add_argument('--train', action='store_true', help='if training the agent 
 
 args = parser.parse_args()
 
-def train(n_episodes=2000, max_t=10, eps_start=1.0, eps_end=0.01, eps_decay=0.995):
+def train(n_episodes=2000, n_steps_per_episode=1000, eps_start=1.0, eps_end=0.01, eps_decay=0.995):
     """Deep Q-Learning training.
     Params
     ======
@@ -31,22 +31,19 @@ def train(n_episodes=2000, max_t=10, eps_start=1.0, eps_end=0.01, eps_decay=0.99
         eps_end (float): minimum value of epsilon
         eps_decay (float): multiplicative factor (per episode) for decreasing epsilon
     """
-    rewards, TDerrors = Log("rewards"), Log("TDerrors")
-    cumulativeRewards, cumulativeTDerrors = Log("cumulativeRewards"), Log("cumulativeTDerrors")
-    logger = Logger(os.path.join(args.savedir, args.name),
-                    rewards,
-                    TDerrors,
-                    cumulativeRewards,
-                    cumulativeTDerrors)
+    rewards, TDerrors = Log("rewards", n_episodes, n_steps_per_episode), Log("TDerrors", n_episodes, n_steps_per_episode)
+    logger = Logger(os.path.join(args.savedir, args.name), rewards, TDerrors)
     # initialize epsilon
     eps = eps_start 
-    print_every = 1
+    print_every = 20
     for episode in range(1, n_episodes+1):
         env.reset()
         state, _, _ = env.sample()
-        for _ in range(max_t):
-            actions = agent.act(state, eps) # get action from current state
-            next_state, reward, _ = env.step(*actions) # observe next state and reward
+        for _ in range(n_steps_per_episode):
+            # get action from current state
+            actions = agent.act(state, eps)
+            # observe next state and reward 
+            next_state, reward, _ = env.step(*actions) 
             # update Q network using Q learning algo, return the TD error
             TDerror = agent.step(state.detach().cpu(),
                                  actions,
@@ -57,22 +54,20 @@ def train(n_episodes=2000, max_t=10, eps_start=1.0, eps_end=0.01, eps_decay=0.99
             rewards.push(reward)
             if TDerror: # TD error can be None if agent.update_every>1
                 TDerrors.push(TDerror)
-        cumulativeRewards.push(rewards.cumulative_sum())
-        cumulativeTDerrors.push(TDerrors.cumulative_sum())
 
         if episode % print_every == 0:
-            print("[{}/{}] ({:.0f}%)\n\t\ttotal reward collected in the last episode: {:.2f}\n\t\t"\
+            print("[{}/{}] ({:.0f}%) eps:{:.3f}\n\t\ttotal reward collected in the last episode: {:.2f}\n\t\t"\
                   "mean reward collected in previous episodes: {:.2f}".format(episode,
                                                                               n_episodes,
                                                                               int(episode/n_episodes*100),
-                                                                              *cumulativeRewards.get(),
-                                                                              cumulativeRewards.mean().item()))
-            logger.visuals(save=True)
-            #logger.save_logs_to_txt(fname="episode{}.txt".format(episode))
+                                                                              eps,
+                                                                              np.sum(rewards.current(), axis=-1),
+                                                                              np.sum(rewards.mean(episodes=slice(0,episode)), axis=-1)))
+            logger.current_visuals(save=True, with_total_reward=True)
+            logger.save_current_logs_to_txt()
         
         # update eps
         eps = max(eps*eps_decay, eps_end)
-
         # step logs for next episode
         logger.step()
 
