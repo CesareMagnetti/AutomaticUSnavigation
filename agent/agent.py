@@ -49,7 +49,6 @@ class Agent():
         self.lr = kwargs.pop('lr', LR)
         # learn from buffer every ``update_every`` steps
         self.update_every = kwargs.pop('update_every', UPDATE_EVERY)
-
         # loss
         self.loss = kwargs.pop('loss', nn.SmoothL1Loss())
 
@@ -59,7 +58,7 @@ class Agent():
         self.memory = ReplayBuffer(action_size, self.buffer_size, self.batch_size, seed, self.device)
         # Initialize time step (for updating every UPDATE_EVERY steps)
         self.t_step = 0
-    
+        print("batch_size", self.batch_size)
     def step(self, state, actions, reward, next_state):
         # convert increment actions back to their ids
         actions = [self.mapIncrementToAction(a) for a in actions]
