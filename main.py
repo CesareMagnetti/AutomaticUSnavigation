@@ -1,5 +1,6 @@
 from environment.baseEnvironment import BaseEnvironment
 from agent.agent import Agent
+from logger.logger import Log, Logger
 import argparse
 from tqdm import tqdm
 from moviepy.editor import ImageSequenceClip
@@ -20,7 +21,7 @@ parser.add_argument('--train', action='store_true', help='if training the agent 
 
 args = parser.parse_args()
 
-def train(n_episodes=2000, max_t=1000, eps_start=1.0, eps_end=0.01, eps_decay=0.995):
+def train(n_episodes=2000, max_t=10, eps_start=1.0, eps_end=0.01, eps_decay=0.995):
     """Deep Q-Learning training.
     Params
     ======
@@ -30,34 +31,51 @@ def train(n_episodes=2000, max_t=1000, eps_start=1.0, eps_end=0.01, eps_decay=0.
         eps_end (float): minimum value of epsilon
         eps_decay (float): multiplicative factor (per episode) for decreasing epsilon
     """
-    scores = []                        # list containing scores from each episode
-    scores_window = deque(maxlen=100)  # last 100 scores
-    eps = eps_start                    # initialize epsilon
+    rewards, TDerrors = Log("rewards"), Log("TDerrors")
+    cumulativeRewards, cumulativeTDerrors = Log("cumulativeRewards"), Log("cumulativeTDerrors")
+    logger = Logger(os.path.join(args.savedir, args.name),
+                    rewards,
+                    TDerrors,
+                    cumulativeRewards,
+                    cumulativeTDerrors)
+    # initialize epsilon
+    eps = eps_start 
+    print_every = 1
     for episode in range(1, n_episodes+1):
         env.reset()
         state, _, _ = env.sample()
-        score = 0
-        for t in range(max_t):
-            actions = agent.act(state, eps)
-            next_state, reward, _ = env.step(*actions)
-            agent.step(state.detach().cpu(),
-                       actions,
-                       reward,
-                       next_state.detach().cpu())
+        for _ in range(max_t):
+            actions = agent.act(state, eps) # get action from current state
+            next_state, reward, _ = env.step(*actions) # observe next state and reward
+            # update Q network using Q learning algo, return the TD error
+            TDerror = agent.step(state.detach().cpu(),
+                                 actions,
+                                 reward,
+                                 next_state.detach().cpu())
             state = next_state
-            score += reward
+            # add logs
+            rewards.push(reward)
+            if TDerror: # TD error can be None if agent.update_every>1
+                TDerrors.push(TDerror)
+        cumulativeRewards.push(rewards.cumulative_sum())
+        cumulativeTDerrors.push(TDerrors.cumulative_sum())
 
-        scores_window.append(score)       # save most recent score
-        scores.append(score)              # save most recent score
-        eps = max(eps_end, eps_decay*eps) # decrease epsilon
-        print('\rEpisode {}\tAverage Score: {:.2f}'.format(episode, np.mean(scores_window)), end="")
-        if episode % 100 == 0:
-            print('\rEpisode {}\tAverage Score: {:.2f}'.format(episode, np.mean(scores_window)))
-        # if np.mean(scores_window)>=200.0:
-        #     print('\nEnvironment solved in {:d} episodes!\tAverage Score: {:.2f}'.format(episode-100, np.mean(scores_window)))
-        #     agent.qnetwork_local.save(os.path.join(args.savedir, 'checkpoint.pth'))
-        #     break
-    return scores
+        if episode % print_every == 0:
+            print("[{}/{}] ({:.0f}%)\n\t\ttotal reward collected in the last episode: {:.2f}\n\t\t"\
+                  "mean reward collected in previous episodes: {:.2f}".format(episode,
+                                                                              n_episodes,
+                                                                              int(episode/n_episodes*100),
+                                                                              *cumulativeRewards.get(),
+                                                                              cumulativeRewards.mean().item()))
+            logger.visuals(save=True)
+            #logger.save_logs_to_txt(fname="episode{}.txt".format(episode))
+        
+        # update eps
+        eps = max(eps*eps_decay, eps_end)
+
+        # step logs for next episode
+        logger.step()
+
 
 def test(max_t=250):
     env.reset()

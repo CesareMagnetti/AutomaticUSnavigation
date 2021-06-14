@@ -41,11 +41,22 @@ class Agent():
         self.qnetwork_target = QNetwork(state_size, action_size, Nagents, seed, **kwargs).to(self.device)
         self.optimizer = optim.Adam(self.qnetwork_local.parameters(), lr=LR)
 
+        # discount factor
+        self.gamma = kwargs.pop('gamma', GAMMA)
+        # tau for soft target network update
+        self.tau = kwargs.pop('tau', TAU)
+        # lr for q networks
+        self.lr = kwargs.pop('lr', LR)
+        # learn from buffer every ``update_every`` steps
+        self.update_every = kwargs.pop('update_every', UPDATE_EVERY)
+
         # loss
         self.loss = kwargs.pop('loss', nn.SmoothL1Loss())
 
         # Replay memory
-        self.memory = ReplayBuffer(action_size, BUFFER_SIZE, BATCH_SIZE, seed, self.device)
+        self.batch_size = kwargs.pop('batch_size', BATCH_SIZE)
+        self.buffer_size = kwargs.pop('buffer_size', BUFFER_SIZE)
+        self.memory = ReplayBuffer(action_size, self.buffer_size, self.batch_size, seed, self.device)
         # Initialize time step (for updating every UPDATE_EVERY steps)
         self.t_step = 0
     
@@ -56,12 +67,15 @@ class Agent():
         self.memory.add(state, actions, reward, next_state)
         
         # Learn every UPDATE_EVERY time steps.
-        self.t_step = (self.t_step + 1) % UPDATE_EVERY
+        self.t_step = (self.t_step + 1) % self.update_every
         if self.t_step == 0:
             # If enough samples are available in memory, get random subset and learn
-            if len(self.memory) > BATCH_SIZE:
+            if len(self.memory) > self.batch_size:
                 experiences = self.memory.sample()
-                self.learn(experiences, GAMMA)
+                loss = self.learn(experiences, self.gamma)
+                return loss
+        else:
+            return None
 
     def act(self, state, eps=0.):
         """Returns actions for given state as per current policy.
@@ -112,7 +126,9 @@ class Agent():
         self.optimizer.step()
 
         # ------------------- update target network ------------------- #
-        self.soft_update(self.qnetwork_local, self.qnetwork_target, TAU)                     
+        self.soft_update(self.qnetwork_local, self.qnetwork_target, self.tau)   
+
+        return loss.item()                  
 
     def soft_update(self, local_model, target_model, tau):
         """Soft update model parameters.
