@@ -4,6 +4,7 @@ from collections import namedtuple, deque
 from .Qnetworks import SimpleQNetwork as QNetwork
 import torch
 import torch.optim as optim
+import os
 
 class Agent():
     """Interacts with and learns from the environment."""
@@ -14,20 +15,19 @@ class Agent():
         Params that we will use:
         ======
             env (environmet object): environment for the agent, see ./environments for more details
-            parser.action_size (int): dimension of each action
-            parser.n_agents (int): how many agents we have
-            parser.seed (int): random seed
+            parser (argparse): parser with all training flags (see main.py)
         """
 
         # save the environment
         self.env = env
+        # saveroot for the model checkpoints
+        self.savedir = os.path.join(parser.checkpoints_dir, parser.name)
         # how many actions can each agent do
         self.action_size = parser.action_size
         # how many agents we have
         self.n_agents = parser.n_agents
         # random seed for reproducibility
         self.seed = random.seed(parser.seed)
-        print(self.seed, parser.seed)
         # get the device for gpu dependencies
         self.device = torch.device('cuda' if parser.use_cuda else 'cpu')
         # discount factor
@@ -38,6 +38,8 @@ class Agent():
         self.lr = parser.learning_rate
         # learn from buffer every ``update_every`` steps
         self.update_every = parser.update_every
+        # purely exploring steps at the beginning
+        self.exploring_steps = parser.exploring_steps
         # loss
         self.loss = parser.loss
         # batch size
@@ -64,8 +66,8 @@ class Agent():
         self.memory.add(state, actions, reward, next_state)
         
         # Learn every UPDATE_EVERY time steps.
-        self.t_step = (self.t_step + 1) % self.update_every
-        if self.t_step == 0:
+        self.t_step = (self.t_step + 1) 
+        if self.t_step % self.update_every == 0 and self.t_step>self.exploring_steps:
             # If enough samples are available in memory, get random subset and learn
             if len(self.memory) > self.batch_size:
                 experiences = self.memory.sample()
@@ -88,9 +90,11 @@ class Agent():
             Qs = self.qnetwork_local(slice)
         self.qnetwork_local.train()
         # Epsilon-greedy action selection
-        if random.random() > eps:
+        if random.random() > eps and self.t_step>self.exploring_steps:
             return np.vstack([self.mapActionToIncrement(torch.argmax(Q, dim=1).item()) for Q in Qs])
         else:
+            if self.t_step == self.exploring_steps:
+                print("finished %d exploring steps, starting to train the agent every %d steps."%(self.exploring_steps, self.update_every))
             return np.vstack([self.mapActionToIncrement(random.choice(np.arange(self.action_size)))for _ in range(self.n_agents)])
 
     def learn(self, experiences):
@@ -141,6 +145,11 @@ class Agent():
         """
         for target_param, local_param in zip(target_model.parameters(), local_model.parameters()):
             target_param.data.copy_(tau*local_param.data + (1.0-tau)*target_param.data)
+
+    def save(self):
+        if os.path.exists(os.path.join(self.savedir)):
+            os.makedirs(self.savedir)
+        torch.save(self.qnetwork_target.state_dict(), os.path.join(self.savedir, "last_checkpoint.pth"))
 
     @staticmethod
     def mapActionToIncrement(action):

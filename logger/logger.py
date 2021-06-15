@@ -83,10 +83,9 @@ class Logger():
         for key, val in kwargs.items():
             self.logs[key].push(val)    
 
-    def save_current_logs_to_txt(self):
-        # get current episode for fname
-        episode = next(iter(self.logs.values())).i
-        fname = "episode%d.txt"%(episode+1)
+    def save_current_logs_to_txt(self, fname=None):
+        if fname is None:
+            fname = "last_logs.txt"
 
         if not os.path.exists(os.path.join(self.savedir, "logs")): 
             os.makedirs(os.path.join(self.savedir, "logs"))
@@ -95,10 +94,9 @@ class Logger():
         for key, log in self.logs.items():
             logs[key] = log.logs[:log.i, ...]
 
-        
         np.savez(os.path.join(self.savedir, "logs", fname), **logs)
 
-    def current_visuals(self, with_total_reward=True, show=False, save=False):
+    def current_visuals(self, with_total_reward=True, show=False, save=False, title=None):
 
         if not (show or save):
             warnings.warn("called Visualize.visuals() but did not pass in neither ``save`` or ``show`` flags. Nothing will be executed.")
@@ -130,4 +128,6 @@ class Logger():
             elif save:
                 if not os.path.exists(os.path.join(self.savedir, "logs", "visuals")):
                     os.makedirs(os.path.join(self.savedir, "logs", "visuals"))
-                plt.savefig(os.path.join(self.savedir, "logs", "visuals", "episode{}".format(episode+1)))
+                if title is None:
+                    title="last_visuals.png"
+                plt.savefig(os.path.join(self.savedir, "logs", "visuals", title))
