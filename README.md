@@ -1,6 +1,6 @@
 # AutomaticUSnavigation
 
-Investigating automatic navigation towards standard US views integrating RL/decision transformer with the virtual US environment developed in [CT2US simulation](https://github.com/CesareMagnetti/CT2UStransfer).
+Investigating automatic navigation towards standard US views integrating RL/decision transformer with the virtual US environment developed in [CT2US simulation](https://github.com/CesareMagnetti/CT2UStransfer). We will start by investigating navigation in the CT volume, then integrate our cycleGAN model to the pipeline to perform navigation in US domain.
 
 ## example untrained agent exploiting it's value function
 
