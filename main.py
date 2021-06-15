@@ -21,15 +21,15 @@ parser.add_argument('--checkpoints_dir', type=str, default='./checkpoints/', hel
 # training options
 parser.add_argument('--train', action='store_true', help='if training the agent before testing it.')
 parser.add_argument('--batch_size', type=int, default=64, help="batch size for the replay buffer.")
-parser.add_argument('--buffer_size', type=int, default=int(1e5), help="capacity of the replay buffer.")
+parser.add_argument('--buffer_size', type=int, default=int(1e6), help="capacity of the replay buffer.")
 parser.add_argument('--gamma', type=int, default=0.99, help="discount factor.")
 parser.add_argument('--tau', type=int, default=1e-3, help="weight for soft update of target parameters.")
 parser.add_argument('--learning_rate', '-lr', type=float, default=5e-4, help="learning rate for the q network.")
 parser.add_argument('--update_every', type=int, default=4, help="how often to update the network, in steps.")
-parser.add_argument('--exploring_steps', type=int, default=1000, help="number of purely exploring steps at the beginning.")
+parser.add_argument('--exploring_steps', type=int, default=10000, help="number of purely exploring steps at the beginning.")
 parser.add_argument('--action_size', type=int, default=6, help="how many action can a single agent perform.\n(i.e. up/down,left/right,forward/backwards = 6 in a 3D volume).")
 parser.add_argument('--n_agents', type=int, default=3, help="how many RL agents (heads) will share the same CNN backbone.")
-parser.add_argument('--n_episodes', type=int, default=1000, help="number of episodes to train the agents for.")
+parser.add_argument('--n_episodes', type=int, default=2000, help="number of episodes to train the agents for.")
 parser.add_argument('--n_steps_per_episode', type=int, default=250, help="number of steps in each episode.")
 parser.add_argument('--eps_start', type=float, default=1.0, help="epsilon factor for egreedy policy, starting value.")
 parser.add_argument('--eps_end', type=float, default=0.01, help="epsilon factor for egreedy policy, starting value.")
@@ -83,15 +83,17 @@ def train(parser):
                                                                               np.sum(rewards.current(), axis=-1),
                                                                               np.sum(rewards.mean(episodes=slice(0,episode)), axis=-1)))
             # save latest model weights
-            print("saving latest model weights...")
-            agent.save()
+            if agent.t_step>agent.exploring_steps:
+                print("saving latest model weights...")
+                agent.save()
             logger.current_visuals(save=True, with_total_reward=True, title="episode%d.png"%episode)
             logger.save_current_logs_to_txt(fname="episode%d.txt"%episode)
         logger.current_visuals(save=True, with_total_reward=True)
         logger.save_current_logs_to_txt()
         
         # update eps
-        eps = max(eps*parser.eps_decay, parser.eps_end)
+        if agent.t_step>agent.exploring_steps:
+            eps = max(eps*parser.eps_decay, parser.eps_end)
         # step logs for next episode
         logger.step()
 
