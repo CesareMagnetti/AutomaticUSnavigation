@@ -147,7 +147,7 @@ class Agent():
             target_param.data.copy_(tau*local_param.data + (1.0-tau)*target_param.data)
 
     def save(self):
-        if os.path.exists(os.path.join(self.savedir)):
+        if not os.path.exists(self.savedir):
             os.makedirs(self.savedir)
         torch.save(self.qnetwork_target.state_dict(), os.path.join(self.savedir, "last_checkpoint.pth"))
 

@@ -20,7 +20,7 @@ parser.add_argument('--results_dir', type=str, default='./results/', help='where
 parser.add_argument('--checkpoints_dir', type=str, default='./checkpoints/', help='where to save the trajectory.')
 # training options
 parser.add_argument('--train', action='store_true', help='if training the agent before testing it.')
-parser.add_argument('--batch_size', type=int, default=32, help="batch size for the replay buffer.")
+parser.add_argument('--batch_size', type=int, default=64, help="batch size for the replay buffer.")
 parser.add_argument('--buffer_size', type=int, default=int(1e5), help="capacity of the replay buffer.")
 parser.add_argument('--gamma', type=int, default=0.99, help="discount factor.")
 parser.add_argument('--tau', type=int, default=1e-3, help="weight for soft update of target parameters.")
