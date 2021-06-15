@@ -8,31 +8,28 @@ import torch.optim as optim
 class Agent():
     """Interacts with and learns from the environment."""
 
-    def __init__(self, state_size, parser, **kwargs):
+    def __init__(self, env, parser):
         """Initialize an Agent object.
         s
         Params that we will use:
         ======
-            state_size (list/tuple): dimension of each state (CxWxH)
+            env (environmet object): environment for the agent, see ./environments for more details
             parser.action_size (int): dimension of each action
             parser.n_agents (int): how many agents we have
             parser.seed (int): random seed
         """
-        self.state_size = state_size
+
+        # save the environment
+        self.env = env
+        # how many actions can each agent do
         self.action_size = parser.action_size
+        # how many agents we have
         self.n_agents = parser.n_agents
+        # random seed for reproducibility
         self.seed = random.seed(parser.seed)
-
-        # get the devce for gpu dependencies
-        self.device = torch.device('cuda' if kwargs.pop('use_cuda', False) else 'cpu')
-
-        # Q-Network
-        self.qnetwork_local = QNetwork(state_size, self.action_size, self.agents, self.seed, **kwargs).to(self.device)
-        print("Q Network instanciated: (%d parameters)"%self.qnetwork_local.count_parameters())
-        print(self.qnetwork_local)
-        self.qnetwork_target = QNetwork(state_size, self.action_size, self.n_agents, self.seed, **kwargs).to(self.device)
-        self.optimizer = optim.Adam(self.qnetwork_local.parameters(), lr=LR)
-
+        print(self.seed, parser.seed)
+        # get the device for gpu dependencies
+        self.device = torch.device('cuda' if parser.use_cuda else 'cpu')
         # discount factor
         self.gamma = parser.gamma
         # tau for soft target network update
@@ -43,17 +40,26 @@ class Agent():
         self.update_every = parser.update_every
         # loss
         self.loss = parser.loss
+        # batch size
+        self.batch_size = parser.batch_size
+        # replay buffer size
+        self.buffer_size = parser.buffer_size
+
+        # Q-Network
+        self.qnetwork_local = QNetwork((1, env.sx, env.sy), self.action_size, self.n_agents, parser.seed).to(self.device)
+        print("Q Network instanciated: (%d parameters)"%self.qnetwork_local.count_parameters())
+        print(self.qnetwork_local)
+        self.qnetwork_target = QNetwork((1, env.sx, env.sy), self.action_size, self.n_agents, parser.seed).to(self.device)
+        self.optimizer = optim.Adam(self.qnetwork_local.parameters(), lr=self.lr)
 
         # Replay memory
-        self.batch_size = parser.batch_size
-        self.buffer_size = parser.buffer_size
-        self.memory = ReplayBuffer(self.action_size, self.buffer_size, self.batch_size, self.seed, self.device)
+        self.memory = ReplayBuffer(self.action_size, self.buffer_size, self.batch_size, self.seed)
         # Initialize time step (for updating every UPDATE_EVERY steps)
         self.t_step = 0
 
     def step(self, state, actions, reward, next_state):
         # convert increment actions back to their ids
-        actions = [self.mapIncrementToAction(a) for a in actions]
+        actions = np.vstack([self.mapIncrementToAction(a) for a in actions])
         # Save experience in replay memory
         self.memory.add(state, actions, reward, next_state)
         
@@ -63,7 +69,7 @@ class Agent():
             # If enough samples are available in memory, get random subset and learn
             if len(self.memory) > self.batch_size:
                 experiences = self.memory.sample()
-                loss = self.learn(experiences, self.gamma)
+                loss = self.learn(experiences)
                 return loss
         else:
             return None
@@ -76,31 +82,34 @@ class Agent():
             state (array_like): current state
             eps (float): epsilon, for epsilon-greedy action selection
         """
-        state = state.float().unsqueeze(0).to(self.device)
+        slice = self.env.sample(state).unsqueeze(0).unsqueeze(0)/255 # normalize slice (which is a uint8) before inputiing it to the Qnetwork
         self.qnetwork_local.eval()
         with torch.no_grad():
-            Qs = self.qnetwork_local(state)
+            Qs = self.qnetwork_local(slice)
         self.qnetwork_local.train()
-
         # Epsilon-greedy action selection
         if random.random() > eps:
-            return [self.mapActionToIncrement(torch.argmax(Q, dim=1).item()) for Q in Qs]
+            return np.vstack([self.mapActionToIncrement(torch.argmax(Q, dim=1).item()) for Q in Qs])
         else:
-            return [self.mapActionToIncrement(random.choice(np.arange(self.action_size)))for _ in range(self.Nagents)] 
+            return np.vstack([self.mapActionToIncrement(random.choice(np.arange(self.action_size)))for _ in range(self.n_agents)])
 
-    def learn(self, experiences, gamma):
+    def learn(self, experiences):
         """Update value parameters using given batch of experience tuples.
         Params
         ======
             experiences (Tuple[torch.Tensor]): tuple of (s, a, r, s') tuples 
-            gamma (float): discount factor
         """
         states, actions, rewards, next_states = experiences
 
-        # compute and minimize the loss for each agent
+        # get corresponding slices for the states and next states (divide by 255 to normalize input as sample() yields uint8 slices)
+        states = torch.cat([self.env.sample(state=s).unsqueeze(0).unsqueeze(0)/255 for s in states], axis=0).to(self.device)
+        next_states = torch.cat([self.env.sample(state=s).unsqueeze(0).unsqueeze(0)/255 for s in next_states], axis=0).to(self.device)
+        # convert rewards and actions to tensor and move to gpu
+        rewards, actions = torch.from_numpy(rewards).to(self.device), torch.from_numpy(actions).to(self.device)
+        # get the action values of the current states and the maximum value of the nest states 
         Qs = self.qnetwork_local(states)
         MaxQs = self.qnetwork_target(next_states)
-
+        # train the Qnetwork
         self.optimizer.zero_grad()
         for Q, A, MaxQ in zip(Qs, actions.T, MaxQs):
             # gather Q value for the action taken
@@ -109,7 +118,7 @@ class Agent():
             # detach to only optimize local network
             MaxQ = MaxQ.max(1)[0].detach().unsqueeze(-1)
             # backup the expected value of this action  
-            Qhat = rewards.unsqueeze(-1) + gamma*MaxQ
+            Qhat = rewards.unsqueeze(-1) + self.gamma*MaxQ
             # evalauate TD error
             loss = self.loss(Q, Qhat)
             # retain graph because we will backprop multiple times through the backbone cnn
@@ -144,7 +153,6 @@ class Agent():
         4: +1 in z coordinate
         5: -1 in z coordinate
         """
-
         if action == 0:
             incr = np.array([1, 0, 0])
         elif action == 1:
@@ -173,7 +181,6 @@ class Agent():
         4: +1 in z coordinate
         5: -1 in z coordinate
         """
-
         if incr[0] == 1:
             action = 0
         elif incr[0] == -1:
@@ -195,7 +202,7 @@ class Agent():
 class ReplayBuffer:
     """Fixed-size buffer to store experience tuples."""
 
-    def __init__(self, action_size, buffer_size, batch_size, seed, device):
+    def __init__(self, action_size, buffer_size, batch_size, seed):
         """Initialize a ReplayBuffer object.
         Params
         ======
@@ -203,12 +210,10 @@ class ReplayBuffer:
             buffer_size (int): maximum size of buffer
             batch_size (int): size of each training batch
             seed (int): random seed
-            device (torch.device): cpu or gpu
         """
         self.action_size = action_size
         self.memory = deque(maxlen=buffer_size)  
         self.batch_size = batch_size
-        self.device = device
         # note that action is going to contain the action of each agent
         self.experience = namedtuple("Experience", field_names=["state", "action", "reward", "next_state"])
         self.seed = random.seed(seed)
@@ -222,10 +227,10 @@ class ReplayBuffer:
         """Randomly sample a batch of experiences from memory."""
         experiences = random.sample(self.memory, k=self.batch_size)
 
-        states = torch.cat([e.state for e in experiences if e is not None]).float().unsqueeze(1).to(self.device)
-        actions = torch.from_numpy(np.vstack([e.action for e in experiences if e is not None])).long().to(self.device)
-        rewards = torch.from_numpy(np.vstack([e.reward for e in experiences if e is not None])).float().to(self.device)
-        next_states = torch.cat([e.next_state for e in experiences if e is not None]).float().unsqueeze(1).to(self.device)
+        states = np.vstack([e.state for e in experiences if e is not None])
+        actions = np.vstack([e.action for e in experiences if e is not None])
+        rewards = np.vstack([e.reward for e in experiences if e is not None])
+        next_states = np.vstack([e.next_state for e in experiences if e is not None])
         return (states, actions, rewards, next_states)
 
     def __len__(self):

@@ -15,8 +15,7 @@ parser.add_argument('--dataroot', '-r',  type=str, help='path to the XCAT CT vol
 parser.add_argument('--train', action='store_true', help='if training the agent before testing it.')
 parser.add_argument('--savedir', '-s', type=str, default='./results/', help='where to save the trajectory.')
 parser.add_argument('--name', '-n', type=str, default='sample_experiment', help='name of the experiment.')
-parser.add_argument('--volume_id', '-vol_id', type=str, default='default_512_CT_1', help='filename of the CT volume.')
-parser.add_argument('--segmentation_id', '-seg_id', type=str, default='default_512_SEG_1', help='filename of the segmented CT volume.')
+parser.add_argument('--volume_id', '-vol_id', type=str, default='samp0', help='filename of the CT volume.')
 parser.add_argument('--ct2us_model_name', '-model', type=str, default='CycleGAN_LPIPS_noIdtLoss_lambda_AB_1', help='filename for the state dict of the ct2us model (.pth) file.\n'\
                                                                       'available models can be found at ./models')
 parser.add_argument('--batch_size', type=int, default=32, help="batch size for the replay buffer.")
@@ -58,17 +57,14 @@ def train(parser):
     print_every = 20
     for episode in range(1, parser.n_episodes+1):
         env.reset()
-        state, _, _ = env.sample()
+        state = env.state
         for _ in range(parser.n_steps_per_episode):
             # get action from current state
             actions = agent.act(state, eps)
             # observe next state and reward 
-            next_state, reward, _ = env.step(*actions) 
+            next_state, reward = env.step(actions) 
             # update Q network using Q learning algo, return the TD error
-            TDerror = agent.step(state.detach().cpu(),
-                                 actions,
-                                 reward,
-                                 next_state.detach().cpu())
+            TDerror = agent.step(state, actions, reward, next_state)
             state = next_state
             # add logs
             rewards.push(reward)
@@ -94,12 +90,12 @@ def train(parser):
 
 def test(parser):
     env.reset()
-    state, _, _ = env.sample()
+    state = env.state
     frames=[]
     for i in tqdm(range(parser.n_steps_per_episode)):
         actions = agent.act(state)
-        state, reward, _ = env.step(*actions)
-        frames.append(env.render(state, titleText='time step: {} reward:{:.5f}'.format(i+1, reward)))
+        state, reward = env.step(actions)
+        frames.append(env.render(state, with_seg=True, titleText='time step: {} reward:{:.5f}'.format(i+1, reward)))
   
     # save all frames as a GIF
     if not os.path.exists(os.path.join(args.savedir, args.name)):
@@ -114,14 +110,12 @@ if __name__=="__main__":
 
     # instanciate environment
     env = BaseEnvironment(args)
-    state, _, _ = env.sample()
-
-    # instanciate agent (3 agents: 1 for each point. 6 actions: up/down, left/right, forward/backwards)
-    agent = Agent(state.shape, args)
+    # instanciate agent
+    agent = Agent(env, args)
 
     # train agent
     if args.train:
         train(args)
     
     # test agent
-    test()
+    test(args)

@@ -32,7 +32,7 @@ class SimpleQNetwork(nn.Module):
     """
     very simple CNN backbone followed by N heads, one for each agent.
     """
-    def __init__(self, state_size, action_size, Nheads, seed, Nblocks=7, downsampling=2, num_features=4):
+    def __init__(self, state_size, action_size, Nheads, seed, Nblocks=6, downsampling=2, num_features=4):
         """
         params
         ======

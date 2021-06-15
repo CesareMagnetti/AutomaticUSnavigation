@@ -23,7 +23,7 @@ args = parser.parse_args()
 if __name__=="__main__":
 
     # instanciate environment
-    env = BaseEnvironment(args.dataroot, args.volume_id, args.segmentation_id)
+    env = BaseEnvironment(args)
     #env = CT2USEnvironment(args.dataroot, args.volume_id, args.segmentation_id, model_name=args.ct2us_model_name, use_cuda=True)
 
     frames = []

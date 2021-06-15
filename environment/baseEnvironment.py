@@ -1,5 +1,4 @@
 import numpy as np
-import random
 import SimpleITK as sitk
 import os
 import torch
@@ -13,18 +12,17 @@ class BaseEnvironment():
         ======
             parser.dataroot (str/pathlike): path to the CT volumes.
             parser.volume_id (str): specific id of the CT volume we intend to use.
-            parser.segmentation_id (str): specific id of the CT volume segmentation we intend to use.
             parser.no_scale_intensity (bool): flag to not scale the CT volume intensities.
             parser.use_cuda (bool): flag to use gpu or not.
             parser.reward_id (int): ID corresponding to the anatomical structure of interest in the segmentation.
         """
         # load CT volume
-        itkVolume = sitk.ReadImage(os.path.join(parser.dataroot, parser.volume_id+".nii.gz"))
+        itkVolume = sitk.ReadImage(os.path.join(parser.dataroot, parser.volume_id+"_CT_1.nii.gz"))
         Volume = sitk.GetArrayFromImage(itkVolume)
         self.sx, self.sy, self.sz = Volume.shape
 
         # load CT segmentation
-        itkSegmentation = sitk.ReadImage(os.path.join(parser.dataroot, parser.segmentation_id+".nii.gz"))
+        itkSegmentation = sitk.ReadImage(os.path.join(parser.dataroot, parser.volume_id+"_SEG_1.nii.gz"))
         Segmentation = sitk.GetArrayFromImage(itkSegmentation)
 
         # preprocess volume
@@ -37,7 +35,7 @@ class BaseEnvironment():
         self.device = torch.device('cuda' if parser.use_cuda else 'cpu')
 
         # save CT volume and segmentation as class attributes
-        self.Volume = torch.tensor(Volume/Volume.max(), requires_grad=False).to(self.device)
+        self.Volume = torch.tensor(Volume, requires_grad=False, dtype=torch.uint8).to(self.device)
         self.Segmentation = torch.tensor(Segmentation, requires_grad=False).to(self.device)
 
         # ID of the segmentation corresponding to the anatomical structure we are trying to observe.
@@ -49,9 +47,9 @@ class BaseEnvironment():
         # constraint on the set of possible starting planes (we do not want a completely random/meaningless plane)
         self.reset()
 
-    def sample(self, oob_black=True):
+    def sample(self, state, return_seg=False, oob_black=True):
         # get plane coefs
-        a,b,c,d = get_plane_coefs(self.pointA, self.pointB, self.pointC)
+        a,b,c,d = get_plane_coefs(*state)
 
         # extract corresponding slice
         main_ax = np.argmax([abs(a), abs(b), abs(c)])
@@ -94,53 +92,56 @@ class BaseEnvironment():
             plane[P < 0] = 0
             plane[P > S] = 0
         
-        segmentation = self.Segmentation[X, Y, Z]
+        if return_seg:
+            return plane, self.Segmentation[X, Y, Z]
+        else:
+            return plane
 
+    def get_reward(self, seg):
         # sample the according reward (i.e. count of pixels in left ventricle)
         # the left ventricle ID in the segmentation is 2885. let's count the number
         # of pixels in the left ventricle as a fit function, the agent will have to
         # find a view that maximizes the amount of left ventricle present in the image.
-        unique, counts = torch.unique(segmentation, return_counts=True)
-        reward = (counts[unique==self.rewardID]/counts.sum()).item() # normalize by all pixels count
+        reward = seg[seg==2885].sum()
+        reward/=np.prod(seg.shape) # normalize by all pixels count
+        return reward.item()
 
-        return plane.unsqueeze(0), reward, segmentation
-
-    def step(self, dirA, dirB, dirC):
-        # update current position
-        self.pointA += dirA
-        self.pointB += dirB
-        self.pointC += dirC
-
-        # sample the plane, reward and the segmentation map
-        nextState, reward, segmentation = self.sample()
-
-        return nextState, reward, segmentation
+    def step(self, increment):
+        # update current state
+        self.state+=increment
+        # observe the next plane and get the reward (from segmentation map)
+        _, segmentation = self.sample(state=self.state, return_seg=True)
+        reward = self.get_reward(segmentation)
+        return self.state, reward
     
     def reset(self):
         # get a meaningful starting plane (these hardcoded ranges will yield views close to 4-chamber view) 
-        self.pointA = np.array([np.random.uniform(low=0.85, high=1)*self.sx,
-                                0,
-                                np.random.uniform(low=0.7, high=0.92)*self.sz])
+        pointA = np.array([np.random.uniform(low=0.85, high=1)*self.sx,
+                           0,
+                           np.random.uniform(low=0.7, high=0.92)*self.sz])
 
-        self.pointB = np.array([np.random.uniform(low=0.3, high=0.43)*self.sx,
-                                self.sy,
-                                0])
+        pointB = np.array([np.random.uniform(low=0.3, high=0.43)*self.sx,
+                           self.sy,
+                           0])
 
-        self.pointC = np.array([np.random.uniform(low=0.3, high=0.43)*self.sx,
-                                self.sy,
-                                self.sz])
+        pointC = np.array([np.random.uniform(low=0.3, high=0.43)*self.sx,
+                           self.sy,
+                           self.sz])
+        
+        # stack points to define the current state of the environment
+        self.state = np.vstack([pointA, pointB, pointC])
     
-    @staticmethod
-    def render(state, seg=None, titleText=None, show=False):
-        # slice was normilized, hence multiply by 255
-        state = state.cpu().numpy().squeeze()*255
-        if seg is not None:
-            seg = seg.cpu().numpy().squeeze()
+    def render(self, state, with_seg=False, titleText=None, show=False):
+        # get the slice and segmentation corresponding to the current state
+        if with_seg:
+            slice, seg = self.sample(state=state, return_seg=True) 
+            slice, seg = slice.cpu().numpy().squeeze(), seg.cpu().numpy().squeeze()
             # stack image and segmentation, progate through channel dim since black and white
             # must do this to call ``ImageSequenceClip`` later.
-            image = np.hstack([state[..., np.newaxis] * np.ones(3), seg[..., np.newaxis] * np.ones(3)])
+            image = np.hstack([slice[..., np.newaxis] * np.ones(3), seg[..., np.newaxis] * np.ones(3)])
         else:
-            image = state[..., np.newaxis] * np.ones(3)
+            slice = self.sample(state=state)
+            image = slice[..., np.newaxis] * np.ones(3)
 
         # put title on image
         if titleText is not None:
