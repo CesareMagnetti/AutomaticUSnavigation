@@ -1,52 +1,53 @@
 import numpy as np
+import random
 import SimpleITK as sitk
 import os
 import torch
 import cv2
 
 class BaseEnvironment():
-    def __init__(self, dataroot, volume_id, segmentation_id, start_pos = None, scale_intensity=True, rewardID=2885, **kwargs):
+    def __init__(self, parser, **kwargs):
+        """Initialize an Environment object.
+        
+        Params that we will use:
+        ======
+            parser.dataroot (str/pathlike): path to the CT volumes.
+            parser.volume_id (str): specific id of the CT volume we intend to use.
+            parser.segmentation_id (str): specific id of the CT volume segmentation we intend to use.
+            parser.no_scale_intensity (bool): flag to not scale the CT volume intensities.
+            parser.use_cuda (bool): flag to use gpu or not.
+            parser.reward_id (int): ID corresponding to the anatomical structure of interest in the segmentation.
+        """
         # load CT volume
-        itkVolume = sitk.ReadImage(os.path.join(dataroot, volume_id+".nii.gz"))
+        itkVolume = sitk.ReadImage(os.path.join(parser.dataroot, parser.volume_id+".nii.gz"))
         Volume = sitk.GetArrayFromImage(itkVolume)
         self.sx, self.sy, self.sz = Volume.shape
 
         # load CT segmentation
-        itkSegmentation = sitk.ReadImage(os.path.join(dataroot, segmentation_id+".nii.gz"))
+        itkSegmentation = sitk.ReadImage(os.path.join(parser.dataroot, parser.segmentation_id+".nii.gz"))
         Segmentation = sitk.GetArrayFromImage(itkSegmentation)
 
         # preprocess volume
         Volume = Volume/Volume.max()*255
-        if scale_intensity:
+        if not parser.no_scale_intensity:
             Volume = intensity_scaling(Volume, pmin=kwargs.pop('pmin', 150), pmax=kwargs.pop('pmax', 200),
                                        nmin=kwargs.pop('nmin', 0), nmax=kwargs.pop('nmax', 255))
         
         # get the devce for gpu dependencies
-        self.device = torch.device('cuda' if kwargs.pop('use_cuda', False) else 'cpu')
+        self.device = torch.device('cuda' if parser.use_cuda else 'cpu')
 
         # save CT volume and segmentation as class attributes
         self.Volume = torch.tensor(Volume/Volume.max(), requires_grad=False).to(self.device)
         self.Segmentation = torch.tensor(Segmentation, requires_grad=False).to(self.device)
 
         # ID of the segmentation corresponding to the anatomical structure we are trying to observe.
-        self.rewardID = rewardID
+        self.rewardID = parser.reward_id
 
         # get starting configuration
-        if start_pos:
-            self.pointA = start_pos.pointA
-            self.pointB = start_pos.pointB
-            self.pointC = start_pos.pointC
-        else:
-            # get a meaningful starting plane (these hardcoded ranges will yield views close to 4-chamber view) 
-            self.pointA = np.array([np.random.uniform(low=0.85, high=1)*self.sx,
-                                    0,
-                                    np.random.uniform(low=0.7, high=0.92)*self.sz])
-            self.pointB = np.array([np.random.uniform(low=0.3, high=0.43)*self.sx,
-                                    self.sy,
-                                    0])
-            self.pointC = np.array([np.random.uniform(low=0.3, high=0.43)*self.sx,
-                                    self.sy,
-                                    self.sz])
+        # we do not set a seed here, so that each time we call reset, the agent will find itself 
+        # in a different plane, prompting for exploring starts. However, the reset function put a
+        # constraint on the set of possible starting planes (we do not want a completely random/meaningless plane)
+        self.reset()
 
     def sample(self, oob_black=True):
         # get plane coefs

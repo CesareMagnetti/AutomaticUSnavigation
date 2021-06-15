@@ -3,62 +3,54 @@ import random
 from collections import namedtuple, deque
 from .Qnetworks import SimpleQNetwork as QNetwork
 import torch
-import torch.nn as nn
 import torch.optim as optim
-
-BUFFER_SIZE = int(1e5)  # replay buffer size
-BATCH_SIZE = 64          # minibatch size
-GAMMA = 0.99            # discount factor
-TAU = 1e-3              # for soft update of target parameters
-LR = 5e-4               # learning rate 
-UPDATE_EVERY = 4        # how often to update the network
 
 class Agent():
     """Interacts with and learns from the environment."""
 
-    def __init__(self, state_size, action_size, Nagents, seed, **kwargs):
+    def __init__(self, state_size, parser, **kwargs):
         """Initialize an Agent object.
-        
-        Params
+        s
+        Params that we will use:
         ======
             state_size (list/tuple): dimension of each state (CxWxH)
-            action_size (int): dimension of each action
-            Nagents (int): how many agents we have
-            seed (int): random seed
+            parser.action_size (int): dimension of each action
+            parser.n_agents (int): how many agents we have
+            parser.seed (int): random seed
         """
         self.state_size = state_size
-        self.action_size = action_size
-        self.Nagents = Nagents
-        self.seed = random.seed(seed)
+        self.action_size = parser.action_size
+        self.n_agents = parser.n_agents
+        self.seed = random.seed(parser.seed)
 
         # get the devce for gpu dependencies
         self.device = torch.device('cuda' if kwargs.pop('use_cuda', False) else 'cpu')
 
         # Q-Network
-        self.qnetwork_local = QNetwork(state_size, action_size, Nagents, seed, **kwargs).to(self.device)
+        self.qnetwork_local = QNetwork(state_size, self.action_size, self.agents, self.seed, **kwargs).to(self.device)
         print("Q Network instanciated: (%d parameters)"%self.qnetwork_local.count_parameters())
         print(self.qnetwork_local)
-        self.qnetwork_target = QNetwork(state_size, action_size, Nagents, seed, **kwargs).to(self.device)
+        self.qnetwork_target = QNetwork(state_size, self.action_size, self.n_agents, self.seed, **kwargs).to(self.device)
         self.optimizer = optim.Adam(self.qnetwork_local.parameters(), lr=LR)
 
         # discount factor
-        self.gamma = kwargs.pop('gamma', GAMMA)
+        self.gamma = parser.gamma
         # tau for soft target network update
-        self.tau = kwargs.pop('tau', TAU)
+        self.tau = parser.tau
         # lr for q networks
-        self.lr = kwargs.pop('lr', LR)
+        self.lr = parser.learning_rate
         # learn from buffer every ``update_every`` steps
-        self.update_every = kwargs.pop('update_every', UPDATE_EVERY)
+        self.update_every = parser.update_every
         # loss
-        self.loss = kwargs.pop('loss', nn.SmoothL1Loss())
+        self.loss = parser.loss
 
         # Replay memory
-        self.batch_size = kwargs.pop('batch_size', BATCH_SIZE)
-        self.buffer_size = kwargs.pop('buffer_size', BUFFER_SIZE)
-        self.memory = ReplayBuffer(action_size, self.buffer_size, self.batch_size, seed, self.device)
+        self.batch_size = parser.batch_size
+        self.buffer_size = parser.buffer_size
+        self.memory = ReplayBuffer(self.action_size, self.buffer_size, self.batch_size, self.seed, self.device)
         # Initialize time step (for updating every UPDATE_EVERY steps)
         self.t_step = 0
-        print("batch_size", self.batch_size)
+
     def step(self, state, actions, reward, next_state):
         # convert increment actions back to their ids
         actions = [self.mapIncrementToAction(a) for a in actions]
