@@ -11,20 +11,21 @@ import torch
 
 # parsing arguments
 parser = argparse.ArgumentParser(description='test script to verify we can sample trajectories from the environment.')
+# directories handling
 parser.add_argument('--dataroot', '-r',  type=str, help='path to the XCAT CT volumes.')
-parser.add_argument('--train', action='store_true', help='if training the agent before testing it.')
-parser.add_argument('--savedir', '-s', type=str, default='./results/', help='where to save the trajectory.')
 parser.add_argument('--name', '-n', type=str, default='sample_experiment', help='name of the experiment.')
 parser.add_argument('--volume_id', '-vol_id', type=str, default='samp0', help='filename of the CT volume.')
-parser.add_argument('--ct2us_model_name', '-model', type=str, default='CycleGAN_LPIPS_noIdtLoss_lambda_AB_1', help='filename for the state dict of the ct2us model (.pth) file.\n'\
-                                                                      'available models can be found at ./models')
+parser.add_argument('--ct2us_model_name', '-model', type=str, default='CycleGAN_LPIPS_noIdtLoss_lambda_AB_1',
+                    help='filename for the state dict of the ct2us model (.pth) file.\navailable models can be found at ./models')
+parser.add_argument('--savedir', '-s', type=str, default='./results/', help='where to save the trajectory.')
+# training options
+parser.add_argument('--train', action='store_true', help='if training the agent before testing it.')
 parser.add_argument('--batch_size', type=int, default=32, help="batch size for the replay buffer.")
 parser.add_argument('--buffer_size', type=int, default=int(1e5), help="capacity of the replay buffer.")
 parser.add_argument('--gamma', type=int, default=0.99, help="discount factor.")
 parser.add_argument('--tau', type=int, default=1e-3, help="weight for soft update of target parameters.")
 parser.add_argument('--learning_rate', '-lr', type=float, default=5e-4, help="learning rate for the q network.")
 parser.add_argument('--update_every', type=int, default=4, help="how often to update the network, in steps.")
-parser.add_argument('--seed', type=int, default=1, help="random seed for reproducibility.")
 parser.add_argument('--action_size', type=int, default=6, help="how many action can a single agent perform.\n(i.e. up/down,left/right,forward/backwards = 6 in a 3D volume).")
 parser.add_argument('--n_agents', type=int, default=3, help="how many RL agents (heads) will share the same CNN backbone.")
 parser.add_argument('--n_episodes', type=int, default=200, help="number of episodes to train the agents for.")
@@ -35,7 +36,8 @@ parser.add_argument('--eps_decay', type=float, default=0.995, help="epsilon fact
 parser.add_argument('--reward_id', type=int, default=2885, help="ID of the anatomical structure of interest. (default: left ventricle, 2885)")
 parser.add_argument('--no_scale_intensity', action='store_true', help="If you do not want to scale the intensities of the CT volume.")
 parser.add_argument('--loss', default=torch.nn.SmoothL1Loss(), help="torch.nn instance of the loss function to use while training the Qnetwork.")
-
+# random seed for reproducibility
+parser.add_argument('--seed', type=int, default=1, help="random seed for reproducibility.")
 
 args = parser.parse_args()
 args.use_cuda = torch.cuda.is_available()

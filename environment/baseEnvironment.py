@@ -102,9 +102,9 @@ class BaseEnvironment():
         # the left ventricle ID in the segmentation is 2885. let's count the number
         # of pixels in the left ventricle as a fit function, the agent will have to
         # find a view that maximizes the amount of left ventricle present in the image.
-        reward = seg[seg==2885].sum()
+        reward = (seg==self.rewardID).sum().item()
         reward/=np.prod(seg.shape) # normalize by all pixels count
-        return reward.item()
+        return reward
 
     def step(self, increment):
         # update current state

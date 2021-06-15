@@ -102,23 +102,23 @@ class Agent():
         states, actions, rewards, next_states = experiences
 
         # get corresponding slices for the states and next states (divide by 255 to normalize input as sample() yields uint8 slices)
-        states = torch.cat([self.env.sample(state=s).unsqueeze(0).unsqueeze(0)/255 for s in states], axis=0).to(self.device)
-        next_states = torch.cat([self.env.sample(state=s).unsqueeze(0).unsqueeze(0)/255 for s in next_states], axis=0).to(self.device)
+        states = torch.cat([self.env.sample(state=s).unsqueeze(0).unsqueeze(0)/255 for s in states], axis=0).float().to(self.device)
+        next_states = torch.cat([self.env.sample(state=s).unsqueeze(0).unsqueeze(0)/255 for s in next_states], axis=0).float().to(self.device)
         # convert rewards and actions to tensor and move to gpu
-        rewards, actions = torch.from_numpy(rewards).to(self.device), torch.from_numpy(actions).to(self.device)
+        rewards, actions = torch.from_numpy(rewards).float().to(self.device), torch.from_numpy(actions).long().to(self.device)
         # get the action values of the current states and the maximum value of the nest states 
         Qs = self.qnetwork_local(states)
         MaxQs = self.qnetwork_target(next_states)
         # train the Qnetwork
         self.optimizer.zero_grad()
-        for Q, A, MaxQ in zip(Qs, actions.T, MaxQs):
+        for Q, A, MaxQ in zip(Qs, actions.permute(1,0,2), MaxQs):
             # gather Q value for the action taken
-            Q = Q.gather(1, A.unsqueeze(-1))
+            Q = Q.gather(1, A)
             # get the value of the best action in the next state
             # detach to only optimize local network
             MaxQ = MaxQ.max(1)[0].detach().unsqueeze(-1)
             # backup the expected value of this action  
-            Qhat = rewards.unsqueeze(-1) + self.gamma*MaxQ
+            Qhat = rewards + self.gamma*MaxQ
             # evalauate TD error
             loss = self.loss(Q, Qhat)
             # retain graph because we will backprop multiple times through the backbone cnn
@@ -226,11 +226,10 @@ class ReplayBuffer:
     def sample(self):
         """Randomly sample a batch of experiences from memory."""
         experiences = random.sample(self.memory, k=self.batch_size)
-
-        states = np.vstack([e.state for e in experiences if e is not None])
-        actions = np.vstack([e.action for e in experiences if e is not None])
+        states = np.vstack([e.state[np.newaxis, ...] for e in experiences if e is not None])
+        actions = np.vstack([e.action[np.newaxis, ...] for e in experiences if e is not None])
         rewards = np.vstack([e.reward for e in experiences if e is not None])
-        next_states = np.vstack([e.next_state for e in experiences if e is not None])
+        next_states = np.vstack([e.next_state[np.newaxis, ...] for e in experiences if e is not None])
         return (states, actions, rewards, next_states)
 
     def __len__(self):
