@@ -23,11 +23,6 @@ class HeadBlock(nn.Module):
                  nn.ReLU()]
         if dropout:
             block+=[nn.Dropout(0.5)]
-        block+=[nn.Linear(inFeatures//4, inFeatures//4),
-                nn.BatchNorm1d(inFeatures//4),
-                nn.ReLU()]
-        if dropout:
-            block+=[nn.Dropout(0.5)]
         block+=[nn.Linear(inFeatures//4, actionSize)]
         self.block = nn.Sequential(*block)
 

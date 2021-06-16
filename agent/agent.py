@@ -41,7 +41,7 @@ class Agent():
         # purely exploring steps at the beginning
         self.exploring_steps = parser.exploring_steps
         # loss
-        self.loss = parser.loss
+        self.loss = torch.nn.SmoothL1Loss()
         # batch size
         self.batch_size = parser.batch_size
         # replay buffer size
@@ -68,15 +68,14 @@ class Agent():
         self.memory.add(state, actions, reward, next_state)
         
         # Learn every UPDATE_EVERY time steps.
-        self.t_step = (self.t_step + 1) 
-        if self.t_step % self.update_every == 0 and self.t_step>self.exploring_steps:
+        self.t_step+= 1
+        if self.t_step % self.update_every == 0 and self.t_step>self.exploring_steps and len(self.memory) > self.batch_size:
             # If enough samples are available in memory, get random subset and learn
-            if len(self.memory) > self.batch_size:
-                experiences = self.memory.sample()
-                loss = self.learn(experiences)
-                return loss
+            experiences = self.memory.sample()
+            loss = self.learn(experiences)
+            return loss
         else:
-            return None
+            return 0
 
     def act(self, state, eps=0.):
         """Returns actions for given state as per current policy.
