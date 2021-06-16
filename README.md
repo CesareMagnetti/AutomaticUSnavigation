@@ -4,7 +4,7 @@ Investigating automatic navigation towards standard US views integrating RL/deci
 
 ## example untrained agent exploiting it's value function
 
-The agent is in control of moving 3 points in a 3D volume, which will select the corresponding CT plane that is sampled. We aim to model the agent to learn to move towards planes which maximize the visibility of a certain anatomical structure (i.e. the left ventricle) and we reward him according to the ratio of pixels in the 2D view that belong to the goal anatomical structure. The following animation shows an untrained agent navigating throughout the CT volume.
+The agent is in control of moving 3 points in a 3D volume, which will select the corresponding CT plane that is sampled. We aim to model the agent to learn to move towards planes which maximize the visibility of a certain anatomical structure (i.e. the left ventricle) and we reward him according to the ratio of pixels in the 2D view that belong to the goal anatomical structure. Furthermore, we add a small penalty for each time-step to encourage the agent to move towards planes of interest and we add another penalty if the agent moves towards the edges of the volume, which do not contain any meaningful information. This is implemented by rewarding the agent proportionally to the area of the triangle spanned by the 3 points (encouraging points to be far apart, hence not all clustered at an edge of the volume). The following animation shows an untrained agent navigating throughout the CT volume.
 
 <div align="center">
     <img width="50%" src="results/untrained_agent/navigation.gif", alt="untrained agent acting greedily."
