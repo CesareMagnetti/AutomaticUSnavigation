@@ -96,7 +96,7 @@ if __name__=="__main__":
 
 
     # tell wandb to get started
-    with wandb.init(project="AutomaticUSnavigation", config=config, mode=config.wandb):
+    with wandb.init(project="AutomaticUSnavigation", name=config.name, config=config, mode=config.wandb):
         # access all HPs through wandb.config, so logging matches execution!
         config = wandb.config
         # instanciate environment
