@@ -99,7 +99,7 @@ class Logger():
 
         np.savez(os.path.join(self.savedir, "logs", fname), **logs)
 
-    def current_visuals(self, with_total_reward=True, show=False, save=False, title=None):
+    def current_visuals(self, with_total_reward=True, with_total_TDerror=True, show=False, save=False, title=None):
 
         if not (show or save):
             warnings.warn("called Visualize.visuals() but did not pass in neither ``save`` or ``show`` flags. Nothing will be executed.")
@@ -113,6 +113,10 @@ class Logger():
             # calculate total collected rewards in previous episodes if needed
             if "rewards" in logs and with_total_reward:
                 logs["rewards_total"] = np.sum(logs["rewards"], axis=-1)
+            
+            # calculate the total TD error in each episode
+            if "TDerrors" in logs and with_total_TDerror:
+                logs["TDerrors_total"] = np.mesuman(logs["TDerrors"], axis=-1)
 
             # plot visuals
             fig, axs = plt.subplots(len(logs), 1)
