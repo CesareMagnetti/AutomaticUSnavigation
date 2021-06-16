@@ -48,10 +48,12 @@ class Agent():
         self.buffer_size = parser.buffer_size
 
         # Q-Network
-        self.qnetwork_local = QNetwork((1, env.sx, env.sy), self.action_size, self.n_agents, parser.seed).to(self.device)
+        self.qnetwork_local = QNetwork((1, env.sx, env.sy), self.action_size, self.n_agents, parser.seed, parser.n_blocks_Q,
+                                       parser.downsampling_Q, parser.n_features_Q, not parser.no_dropout_Q).to(self.device)
         print("Q Network instanciated: (%d parameters)"%self.qnetwork_local.count_parameters())
         print(self.qnetwork_local)
-        self.qnetwork_target = QNetwork((1, env.sx, env.sy), self.action_size, self.n_agents, parser.seed).to(self.device)
+        self.qnetwork_target = QNetwork((1, env.sx, env.sy), self.action_size, self.n_agents, parser.seed, parser.n_blocks_Q,
+                                        parser.downsampling_Q, parser.n_features_Q, not parser.no_dropout_Q).to(self.device)
         self.optimizer = optim.Adam(self.qnetwork_local.parameters(), lr=self.lr)
 
         # Replay memory

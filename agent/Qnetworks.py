@@ -3,25 +3,33 @@ import torch.nn as nn
 
 
 class ConvBlock(nn.Module):
-    def __init__(self, inChannels, outChannels, kernel_size, stride, padding, norm = nn.BatchNorm2d):
+    def __init__(self, inChannels, outChannels, kernel_size, stride, padding, dropout):
         super(ConvBlock, self).__init__()
-        self.block = nn.Sequential(nn.Conv2d(inChannels, outChannels, kernel_size, stride, padding),
-                                   norm(outChannels),
-                                   nn.ReLU(inplace=True))
+        block = [nn.Conv2d(inChannels, outChannels, kernel_size, stride, padding),
+                 nn.BatchNorm2d(outChannels),
+                 nn.ReLU(inplace=True)]
+        if dropout:
+            block+=[nn.Dropout(0.5)]
+        self.block = nn.Sequential(*block)
 
     def forward(self, x):
         return self.block(x)
 
 class HeadBlock(nn.Module):
-    def __init__(self, inFeatures, actionSize, norm=nn.BatchNorm1d):
+    def __init__(self, inFeatures, actionSize, dropout):
         super(HeadBlock, self).__init__()
-        self.block = nn.Sequential(nn.Linear(inFeatures, inFeatures//4),
-                                   norm(inFeatures//4),
-                                   nn.ReLU(),
-                                   nn.Linear(inFeatures//4, inFeatures//4),
-                                   norm(inFeatures//4),
-                                   nn.ReLU(),
-                                   nn.Linear(inFeatures//4, actionSize))
+        block = [nn.Linear(inFeatures, inFeatures//4),
+                 nn.BatchNorm1d(inFeatures//4),
+                 nn.ReLU()]
+        if dropout:
+            block+=[nn.Dropout(0.5)]
+        block+=[nn.Linear(inFeatures//4, inFeatures//4),
+                nn.BatchNorm1d(inFeatures//4),
+                nn.ReLU()]
+        if dropout:
+            block+=[nn.Dropout(0.5)]
+        block+=[nn.Linear(inFeatures//4, actionSize)]
+        self.block = nn.Sequential(*block)
 
     def forward(self, x):
         return self.block(x)
@@ -32,7 +40,7 @@ class SimpleQNetwork(nn.Module):
     """
     very simple CNN backbone followed by N heads, one for each agent.
     """
-    def __init__(self, state_size, action_size, Nheads, seed, Nblocks=6, downsampling=2, num_features=4):
+    def __init__(self, state_size, action_size, Nheads, seed, Nblocks=6, downsampling=2, num_features=4, dropout=True):
         """
         params
         ======
@@ -43,15 +51,16 @@ class SimpleQNetwork(nn.Module):
             downsampling (int): downsampling factor of each convolutional bock
             num_features (int): number of filters in the first convolutional block, each following block
                                 will go from num_features*2**i  -->  num_features*2**(i+1).
+            dropout (bool): if you want to use dropout (p=0.5)
                                  
         """
         super(SimpleQNetwork, self).__init__()
         self.seed = torch.manual_seed(seed)
 
         # build convolutional backbone
-        cnn = [ConvBlock(state_size[0], num_features, 3, downsampling, 1)]
+        cnn = [ConvBlock(state_size[0], num_features, 3, downsampling, 1, dropout)]
         for i in range(Nblocks-1):
-            cnn.append(ConvBlock(num_features*2**i, num_features*2**(i+1), 3, downsampling, 1))
+            cnn.append(ConvBlock(num_features*2**i, num_features*2**(i+1), 3, downsampling, 1, dropout))
         cnn.append(nn.Conv2d(num_features*2**(i+1), num_features*2**(i+2), 3, downsampling, 1))
         self.cnn = nn.Sequential(*cnn)
 
@@ -61,7 +70,7 @@ class SimpleQNetwork(nn.Module):
         # build N linear heads, one for each agent
         heads = []
         for i in range(Nheads):
-            heads.append(HeadBlock(self.num_linear_features, action_size))
+            heads.append(HeadBlock(self.num_linear_features, action_size, dropout))
         self.heads = nn.ModuleList(heads)
 
     def forward(self, x):

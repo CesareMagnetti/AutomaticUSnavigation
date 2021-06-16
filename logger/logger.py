@@ -116,10 +116,13 @@ class Logger():
             
             # calculate the total TD error in each episode
             if "TDerrors" in logs and with_total_TDerror:
-                logs["TDerrors_total"] = np.mesuman(logs["TDerrors"], axis=-1)
+                logs["TDerrors_total"] = np.sum(logs["TDerrors"], axis=-1)
 
             # plot visuals
-            fig, axs = plt.subplots(len(logs), 1)
+            N = len(logs)
+            nrows = int(np.sqrt(N))
+            ncols = int(np.sqrt(N)) + int(not N%nrows==0)
+            fig, axs = plt.subplots(nrows, ncols, figsize=(8*ncols, 5*nrows))
             fig.suptitle("visuals at episode:%d"%(episode+1))
             for name, ax in zip(logs, axs.ravel()):
                 if not "total" in name and logs[name].max_j:
@@ -129,7 +132,6 @@ class Logger():
                     ax.plot(logs[name][:episode])
                     ax.set_xlabel("episodes")                    
                 ax.set_title(name)
-            plt.tight_layout()
 
             if show:
                 plt.show()
@@ -138,4 +140,4 @@ class Logger():
                     os.makedirs(os.path.join(self.savedir, "logs", "visuals"))
                 if title is None:
                     title="last_visuals.png"
-                plt.savefig(os.path.join(self.savedir, "logs", "visuals", title))
+                fig.savefig(os.path.join(self.savedir, "logs", "visuals", title))

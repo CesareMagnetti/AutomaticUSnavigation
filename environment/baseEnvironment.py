@@ -11,42 +11,49 @@ class BaseEnvironment():
         Params that we will use:
         ======
             parser.dataroot (str/pathlike): path to the CT volumes.
-            parser.volume_id (str): specific id of the CT volume we intend to use.
+            parser.volume_ids (str): specific id of the CT volume we intend to use, if more volumes separate by comma.
             parser.no_scale_intensity (bool): flag to not scale the CT volume intensities.
             parser.use_cuda (bool): flag to use gpu or not.
             parser.reward_id (int): ID corresponding to the anatomical structure of interest in the segmentation.
         """
-        # load CT volume
-        itkVolume = sitk.ReadImage(os.path.join(parser.dataroot, parser.volume_id+"_CT_1.nii.gz"))
-        Volume = sitk.GetArrayFromImage(itkVolume)
-        self.sx, self.sy, self.sz = Volume.shape
 
-        # load CT segmentation
-        itkSegmentation = sitk.ReadImage(os.path.join(parser.dataroot, parser.volume_id+"_SEG_1.nii.gz"))
-        Segmentation = sitk.GetArrayFromImage(itkSegmentation)
-
-        # preprocess volume
-        Volume = Volume/Volume.max()*255
-        if not parser.no_scale_intensity:
-            Volume = intensity_scaling(Volume, pmin=kwargs.pop('pmin', 150), pmax=kwargs.pop('pmax', 200),
-                                       nmin=kwargs.pop('nmin', 0), nmax=kwargs.pop('nmax', 255))
-        
         # get the devce for gpu dependencies
         self.device = torch.device('cuda' if parser.use_cuda else 'cpu')
 
-        # save CT volume and segmentation as class attributes
-        self.Volume = torch.tensor(Volume, requires_grad=False, dtype=torch.uint8).to(self.device)
-        self.Segmentation = torch.tensor(Segmentation, requires_grad=False).to(self.device)
+        # load CT volume(s)
+        volume_ids = parser.volume_ids.split(',')
+        self.Volumes, self.Segmentations = [], []
+        for volume_id in volume_ids:
+            itkVolume = sitk.ReadImage(os.path.join(parser.dataroot, volume_id+"_CT_1.nii.gz"))
+            Volume = sitk.GetArrayFromImage(itkVolume)
+            
+            # load CT segmentation
+            itkSegmentation = sitk.ReadImage(os.path.join(parser.dataroot, volume_id+"_SEG_1.nii.gz"))
+            Segmentation = sitk.GetArrayFromImage(itkSegmentation)
+
+            # preprocess volume
+            Volume = Volume/Volume.max()*255
+            if not parser.no_scale_intensity:
+                Volume = intensity_scaling(Volume, pmin=kwargs.pop('pmin', 150), pmax=kwargs.pop('pmax', 200),
+                                        nmin=kwargs.pop('nmin', 0), nmax=kwargs.pop('nmax', 255))
+
+            # save CT volume and segmentation as class attributes
+            Volume = torch.tensor(Volume, requires_grad=False, dtype=torch.uint8).to(self.device)
+            Segmentation = torch.tensor(Segmentation, requires_grad=False).to(self.device)
+
+            # append
+            self.Volumes.append(Volume)
+            self.Segmentations.append(Segmentation)
+
+        # get starting configuration (Volume ID + starting state of the agents) NOTE: assuming all volumes have the same resolution!!!!!
+        self.sx, self.sy, self.sz = self.Volumes[0].shape
+        self.n_Volumes = len(self.Volumes)
+        self.reset()
 
         # ID of the segmentation corresponding to the anatomical structure we are trying to observe.
         self.rewardID = parser.reward_id
         self.penalty_per_step = parser.penalty_per_step
-        self.no_area_penalty = parser.no_area_penalty
-
-        # get starting configuration
-        # we do not set a seed here, so that each time we call reset, the agent will find itself 
-        # in a different plane, prompting for exploring starts.
-        self.reset()
+        self.area_penalty_weight = parser.area_penalty_weight
 
     def sample(self, state, return_seg=False, oob_black=True):
         # get plane coefs
@@ -87,14 +94,15 @@ class BaseEnvironment():
             Z[Z <= 0] = 0
             Z[Z >= self.sz] = self.sz-1
         
-        plane = self.Volume[X, Y, Z]
+        # sample plane from the current volume
+        plane = self.Volumes[self.VolumeID][X, Y, Z]
 
         if oob_black == True:
             plane[P < 0] = 0
             plane[P > S] = 0
         
         if return_seg:
-            return plane, self.Segmentation[X, Y, Z]
+            return plane, self.Segmentations[self.VolumeID][X, Y, Z]
         else:
             return plane
 
@@ -109,13 +117,13 @@ class BaseEnvironment():
         reward-=self.penalty_per_step 
         # incentivize the agent to stay in a relevant plane (not at the edges of the volume) by
         # maximizing the area of the triangle spanned by the three points
-        if not self.no_area_penalty:
+        if self.area_penalty_weight>0.:
             def get_traingle_area(a, b, c) :
                 return 0.5 * np.linalg.norm( np.cross( b-a, c-a ) )
             area = get_traingle_area(*self.state)
             # normalize this area by the area of a 2D slice (like above)
             area/=np.prod(seg.shape)
-            reward+=area 
+            reward+=self.area_penalty_weight*area 
 
         return reward
 
@@ -128,19 +136,9 @@ class BaseEnvironment():
         return self.state, reward
     
     def reset(self):
-        # get a meaningful starting plane (these hardcoded ranges will yield views close to 4-chamber view) 
-        # pointA = np.array([np.random.uniform(low=0.85, high=1)*self.sx,
-        #                    0,
-        #                    np.random.uniform(low=0.7, high=0.92)*self.sz])
-
-        # pointB = np.array([np.random.uniform(low=0.3, high=0.43)*self.sx,
-        #                    self.sy,
-        #                    0])
-
-        # pointC = np.array([np.random.uniform(low=0.3, high=0.43)*self.sx,
-        #                    self.sy,
-        #                    self.sz])
-
+        # sample a random volume to use throughout the episode
+        self.VolumeID = np.random.choice(np.arange(self.n_Volumes))
+        # sample a random plane (defined by 3 points) to start the episode from
         pointA = np.array([np.random.uniform(low=0., high=1)*self.sx,
                            0,
                            np.random.uniform(low=0., high=1.)*self.sz])
