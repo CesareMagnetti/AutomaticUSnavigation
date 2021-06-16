@@ -20,13 +20,16 @@ class Log():
         """
         self.name, self.max_i, self.max_j = name, max_i, max_j
         shape = (max_i, max_j) if max_j else (max_i,1)
-        self.logs = np.zeros(shape, dtype=float)
+        self.logs = np.zeros(shape)
         self.i, self.j = 0, 0
     
     def push(self, item):
-        self.logs[self.i, self.j] = item
-        self.j+=1
-
+        if self.max_j:
+            self.logs[self.i, self.j] = item
+            self.j+=1
+        else: 
+            self.logs[self.i] = item
+        
     def __getitem__(self, i, j=None):
         if j:
             try: return self.logs[i, j].item()
@@ -104,21 +107,22 @@ class Logger():
 
             # get current episode
             episode = next(iter(self.logs.values())).i
-            # get a copy of current results
+            # get a copy of current results up to the current episode
             logs = self.logs.copy()
+            
             # calculate total collected rewards in previous episodes if needed
             if "rewards" in logs and with_total_reward:
-                logs["rewards_total"] = np.sum(logs["rewards"][:episode], axis=-1)
+                logs["rewards_total"] = np.sum(logs["rewards"], axis=-1)
 
             # plot visuals
             fig, axs = plt.subplots(len(logs), 1)
             fig.suptitle("visuals at episode:%d"%(episode+1))
             for name, ax in zip(logs, axs.ravel()):
-                if not "total" in name:
+                if not "total" in name and logs[name].max_j:
                     ax.plot(logs[name].current())
                     ax.set_xlabel("time-step")
                 else:
-                    ax.plot(logs[name])
+                    ax.plot(logs[name][:episode])
                     ax.set_xlabel("episodes")                    
                 ax.set_title(name)
             plt.tight_layout()
