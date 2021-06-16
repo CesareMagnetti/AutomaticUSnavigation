@@ -40,11 +40,12 @@ class BaseEnvironment():
 
         # ID of the segmentation corresponding to the anatomical structure we are trying to observe.
         self.rewardID = parser.reward_id
+        self.penalty_per_step = parser.penalty_per_step
+        self.no_area_penalty = parser.no_area_penalty
 
         # get starting configuration
         # we do not set a seed here, so that each time we call reset, the agent will find itself 
-        # in a different plane, prompting for exploring starts. However, the reset function put a
-        # constraint on the set of possible starting planes (we do not want a completely random/meaningless plane)
+        # in a different plane, prompting for exploring starts.
         self.reset()
 
     def sample(self, state, return_seg=False, oob_black=True):
@@ -104,6 +105,18 @@ class BaseEnvironment():
         # find a view that maximizes the amount of left ventricle present in the image.
         reward = (seg==self.rewardID).sum().item()
         reward/=np.prod(seg.shape) # normalize by all pixels count
+        # give a penalty for each step to incentivize moving towards planes of interest
+        reward-=self.penalty_per_step 
+        # incentivize the agent to stay in a relevant plane (not at the edges of the volume) by
+        # maximizing the area of the triangle spanned by the three points
+        if not self.no_area_penalty:
+            def get_traingle_area(a, b, c) :
+                return 0.5 * np.linalg.norm( np.cross( b-a, c-a ) )
+            area = get_traingle_area(*self.state)
+            # normalize this area by the area of a 2D slice (like above)
+            area/=np.prod(seg.shape)
+            reward+=area 
+
         return reward
 
     def step(self, increment):
@@ -116,18 +129,30 @@ class BaseEnvironment():
     
     def reset(self):
         # get a meaningful starting plane (these hardcoded ranges will yield views close to 4-chamber view) 
-        pointA = np.array([np.random.uniform(low=0.85, high=1)*self.sx,
+        # pointA = np.array([np.random.uniform(low=0.85, high=1)*self.sx,
+        #                    0,
+        #                    np.random.uniform(low=0.7, high=0.92)*self.sz])
+
+        # pointB = np.array([np.random.uniform(low=0.3, high=0.43)*self.sx,
+        #                    self.sy,
+        #                    0])
+
+        # pointC = np.array([np.random.uniform(low=0.3, high=0.43)*self.sx,
+        #                    self.sy,
+        #                    self.sz])
+
+        pointA = np.array([np.random.uniform(low=0., high=1)*self.sx,
                            0,
-                           np.random.uniform(low=0.7, high=0.92)*self.sz])
+                           np.random.uniform(low=0., high=1.)*self.sz])
 
-        pointB = np.array([np.random.uniform(low=0.3, high=0.43)*self.sx,
+        pointB = np.array([np.random.uniform(low=0., high=1.)*self.sx,
                            self.sy,
-                           0])
+                           np.random.uniform(low=0., high=1.)*self.sz])
 
-        pointC = np.array([np.random.uniform(low=0.3, high=0.43)*self.sx,
+        pointC = np.array([np.random.uniform(low=0., high=1.)*self.sx,
                            self.sy,
-                           self.sz])
-        
+                           np.random.uniform(low=0., high=1.)*self.sz])
+                
         # stack points to define the current state of the environment
         self.state = np.vstack([pointA, pointB, pointC])
     
@@ -141,6 +166,7 @@ class BaseEnvironment():
             image = np.hstack([slice[..., np.newaxis] * np.ones(3), seg[..., np.newaxis] * np.ones(3)])
         else:
             slice = self.sample(state=state)
+            slice = slice.cpu().numpy().squeeze()
             image = slice[..., np.newaxis] * np.ones(3)
 
         # put title on image
