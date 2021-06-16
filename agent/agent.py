@@ -149,7 +149,15 @@ class Agent():
     def save(self):
         if not os.path.exists(self.savedir):
             os.makedirs(self.savedir)
-        torch.save(self.qnetwork_target.state_dict(), os.path.join(self.savedir, "last_checkpoint.pth"))
+        torch.save(self.qnetwork_target.state_dict(), os.path.join(self.savedir, "latest.pth"))
+
+    def load(self, name):
+        print("loading: {}".format(os.path.join(self.savedir, name)))
+        if not ".pth" in name:
+            name+=".pth"
+        state_dict = torch.load(os.path.join(self.savedir, name))
+        self.qnetwork_local.load_state_dict(state_dict)
+        self.qnetwork_target.load_state_dict(state_dict)
 
     @staticmethod
     def mapActionToIncrement(action):
