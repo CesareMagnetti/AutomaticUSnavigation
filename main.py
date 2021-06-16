@@ -49,7 +49,7 @@ def train(parser):
             agent.save()
 
         # save a gif of the agent exploiting its policy
-        if episode % config.save_trajectory_every:
+        if episode % config.save_trajectory_every == 0:
             test(config, "episode%d.gif"%episode)
 
         # update eps

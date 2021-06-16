@@ -36,7 +36,7 @@ def gather_options():
     parser.add_argument('--no_dropout_Q', action='store_true', help="to not use dropout in the Qnetwork (p=0.5 after conv layers and p=0.1 after linear layers).")
     parser.add_argument('--action_size', type=int, default=6, help="how many action can a single agent perform.\n(i.e. up/down,left/right,forward/backwards = 6 in a 3D volume).")
     parser.add_argument('--n_agents', type=int, default=3, help="how many RL agents (heads) will share the same CNN backbone.")
-    parser.add_argument('--n_episodes', type=int, default=2400, help="number of episodes to train the agents for.")
+    parser.add_argument('--n_episodes', type=int, default=5000, help="number of episodes to train the agents for.")
     parser.add_argument('--n_steps_per_episode', type=int, default=250, help="number of steps in each episode.")
     parser.add_argument('--eps_start', type=float, default=1.0, help="epsilon factor for egreedy policy, starting value.")
     parser.add_argument('--eps_end', type=float, default=0.01, help="epsilon factor for egreedy policy, starting value.")
