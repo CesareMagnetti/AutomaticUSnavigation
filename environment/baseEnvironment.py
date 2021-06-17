@@ -4,6 +4,9 @@ import os
 import torch
 import cv2
 
+def get_traingle_area(a, b, c) :
+    return 0.5 * np.linalg.norm( np.cross( b-a, c-a ) )
+
 class BaseEnvironment():
     def __init__(self, parser, **kwargs):
         """Initialize an Environment object.
@@ -54,6 +57,11 @@ class BaseEnvironment():
         self.rewardID = parser.reward_id
         self.penalty_per_step = parser.penalty_per_step
         self.area_penalty_weight = parser.area_penalty_weight
+        self.logged_rewards = ["rewardAnatomy"]
+        if self.penalty_per_step>0:
+            self.logged_rewards+=["rewardStep"]
+        if self.area_penalty_weight>0:
+            self.logged_rewards+=["rewardArea"]
 
     def sample(self, state, return_seg=False, oob_black=True):
         # get plane coefs
@@ -111,21 +119,27 @@ class BaseEnvironment():
         # the left ventricle ID in the segmentation is 2885. let's count the number
         # of pixels in the left ventricle as a fit function, the agent will have to
         # find a view that maximizes the amount of left ventricle present in the image.
-        reward = (seg==self.rewardID).sum().item()
-        reward/=np.prod(seg.shape) # normalize by all pixels count
-        # give a penalty for each step to incentivize moving towards planes of interest
-        reward-=self.penalty_per_step 
+        rewardAnatomy = (seg==self.rewardID).sum().item()
+        rewardAnatomy/=np.prod(seg.shape) # normalize by all pixels count
+
+        # give a penalty for each step that does not contain any anatomical structure of interest.
+        # this should incentivize moving towards planes of interest quickly to not receive negative rewards.
+        if rewardAnatomy > 0:
+            rewardStep = 0
+        else:
+            rewardStep = -self.penalty_per_step 
+
         # incentivize the agent to stay in a relevant plane (not at the edges of the volume) by
         # maximizing the area of the triangle spanned by the three points
         if self.area_penalty_weight>0.:
-            def get_traingle_area(a, b, c) :
-                return 0.5 * np.linalg.norm( np.cross( b-a, c-a ) )
             area = get_traingle_area(*self.state)
             # normalize this area by the area of a 2D slice (like above)
             area/=np.prod(seg.shape)
-            reward+=self.area_penalty_weight*area 
+            rewardArea = self.area_penalty_weight*area 
+        else:
+            rewardArea = 0
 
-        return reward
+        return {"rewardAnatomy": rewardAnatomy, "rewardStep": rewardStep, "rewardArea": rewardArea}
 
     def step(self, increment):
         # update current state
