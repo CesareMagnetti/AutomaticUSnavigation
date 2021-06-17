@@ -49,7 +49,7 @@ def train(config):
 
         # send logs to weights and biases
         if episode % config.log_freq == 0:
-            wandb.log(logs, step=agent.t_step)
+            wandb.log(logs, step=agent.t_step, commit=True)
                 
         # save agent locally
         if episode % config.save_every == 0 and agent.t_step>agent.exploring_steps:
@@ -91,7 +91,7 @@ def test(config, fname=None):
     clip.write_gif(os.path.join(config.results_dir, config.name, fname), fps=10)
 
     # save also on wandb
-    wandb.log({"total_reward_collected_test": total_reward}, step=agent.t_step)
+    wandb.log({"total_reward_collected_test": total_reward}, step=agent.t_step, commit=True)
     wandb.save(os.path.join(config.results_dir, config.name, fname))
 
 
