@@ -169,10 +169,10 @@ class Agent():
             for target_param, local_param in zip(target_model.parameters(), local_model.parameters()):
                 target_param.data.copy_(local_param.data)
 
-    def save(self):
+    def save(self, fname="latest.pth"):
         if not os.path.exists(self.savedir):
             os.makedirs(self.savedir)
-        torch.save(self.qnetwork_target.state_dict(), os.path.join(self.savedir, "latest.pth"))
+        torch.save(self.qnetwork_target.state_dict(), os.path.join(self.savedir, fname))
 
     def load(self, name):
         print("loading: {}".format(os.path.join(self.savedir, name)))
