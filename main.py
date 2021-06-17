@@ -4,7 +4,6 @@ from options.options import gather_options, print_options
 from tqdm import tqdm
 from moviepy.editor import ImageSequenceClip
 import os
-import numpy as np
 import torch
 import wandb
 
@@ -14,18 +13,24 @@ config = parser.parse_args()
 config.use_cuda = torch.cuda.is_available()
 print_options(config, parser)
 
-def train(parser):
+# decay factor for epsilon based on our eps_start, eps_end and stop_eps_decay factor.
+# we also need to consider that for the first --esploring steps we are not decaying epsilon
+# hence our decay factor should get to eps_end when we want even if we did't update eps during
+# these exploring steps
+EPS_DECAY_FACTOR = (config.eps_end/config.eps_start)**(1/int(config.stop_eps_decay*config.n_episodes - config.exploring_steps/config.n_steps_per_episode))
+
+def train(config):
     # initialize epsilon
-    eps = parser.eps_start 
+    eps = config.eps_start 
     # tell wandb to watch what the model gets up to: gradients, weights, and more!
-    wandb.watch(agent.qnetwork_target, agent.loss, log="all", log_freq=parser.log_freq)
+    wandb.watch(agent.qnetwork_target, agent.loss, log="all", log_freq=config.log_freq)
     # loop through episodes
-    for episode in tqdm(range(1, parser.n_episodes+1)):
+    for episode in tqdm(range(1, config.n_episodes+1)):
         # choose a random volume and a random starting plane
         env.reset()
         state = env.state
         rewards, TDerrors = 0, 0
-        for _ in range(parser.n_steps_per_episode):
+        for _ in range(config.n_steps_per_episode):
             # get action from current state
             actions = agent.act(state, eps)
             # observe next state and reward 
@@ -38,8 +43,8 @@ def train(parser):
             TDerrors+=TDerror
 
         # send logs to weights and biases
-        if episode % parser.log_freq == 0:
-            wandb.log({"mean_TD_error": TDerrors,
+        if episode % config.log_freq == 0:
+            wandb.log({"total_TD_error": TDerrors,
                        "total_reward_collected": rewards,
                        "epsilon": eps}, step=agent.t_step)
                 
@@ -54,7 +59,7 @@ def train(parser):
 
         # update eps
         if agent.t_step>agent.exploring_steps:
-            eps = max(eps*parser.eps_decay, parser.eps_end)
+            eps = max(eps*EPS_DECAY_FACTOR, config.eps_end)
     
     # at the very end save model as onnx for visualization and easy sharing to other frameworks
     dummy_input = torch.cat([env.sample(env.state).unsqueeze(0).unsqueeze(0)/255 for _ in range(10)], dim=0)
@@ -63,12 +68,12 @@ def train(parser):
 
 
 
-def test(parser, fname=None):
+def test(config, fname=None):
     env.reset()
     state = env.state
     frames=[]
     total_reward=0
-    for i in tqdm(range(parser.n_steps_per_episode)):
+    for i in tqdm(range(config.n_steps_per_episode)):
         actions = agent.act(state)
         state, reward = env.step(actions)
         frames.append(env.render(state, titleText='reward:{:.5f}'.format(reward)))
@@ -94,7 +99,6 @@ if __name__=="__main__":
     if config.wandb in ["online", "offline"]:
         wandb.login()
 
-
     # tell wandb to get started
     with wandb.init(project="AutomaticUSnavigation", name=config.name, config=config, mode=config.wandb):
         # access all HPs through wandb.config, so logging matches execution!
@@ -104,6 +108,7 @@ if __name__=="__main__":
         # instanciate agent
         agent = Agent(env, config)
         if config.load is not None:
+            print("loading: {} ...".format(config.load))
             agent.load(config.load)
         # train agent
         if config.train:

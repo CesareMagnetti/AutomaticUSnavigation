@@ -32,6 +32,10 @@ class Agent():
         self.device = torch.device('cuda' if parser.use_cuda else 'cpu')
         # discount factor
         self.gamma = parser.gamma
+        # flag for hard/soft update
+        self.target_update = parser.target_update
+        # delay for hard update
+        self.delay_steps = parser.delay_steps
         # tau for soft target network update
         self.tau = parser.tau
         # lr for q networks
@@ -111,7 +115,7 @@ class Agent():
         next_states = torch.cat([self.env.sample(state=s).unsqueeze(0).unsqueeze(0)/255 for s in next_states], axis=0).float().to(self.device)
         # convert rewards and actions to tensor and move to gpu
         rewards, actions = torch.from_numpy(rewards).float().to(self.device), torch.from_numpy(actions).long().to(self.device)
-        # get the action values of the current states and the maximum value of the nest states 
+        # get the action values of the current states and the target values of the next states 
         Qs = self.qnetwork_local(states)
         MaxQs = self.qnetwork_target(next_states)
         # train the Qnetwork
@@ -131,7 +135,12 @@ class Agent():
         self.optimizer.step()
 
         # ------------------- update target network ------------------- #
-        self.soft_update(self.qnetwork_local, self.qnetwork_target, self.tau)   
+        if self.target_update == "soft":
+            self.soft_update(self.qnetwork_local, self.qnetwork_target, self.tau)   
+        elif self.target_update == "hard":
+            self.hard_update(self.qnetwork_local, self.qnetwork_target, self.delay_steps)
+        else:
+            raise ValueError('unknown ``self.target_update``: {}. possible options: [hard, soft]'.format(self.target_update))
 
         return loss.item()                  
 
@@ -146,6 +155,19 @@ class Agent():
         """
         for target_param, local_param in zip(target_model.parameters(), local_model.parameters()):
             target_param.data.copy_(tau*local_param.data + (1.0-tau)*target_param.data)
+    
+    def hard_update(self, local_model, target_model, N):
+        """hard update model parameters.
+        θ_target = θ_local every N steps.
+        Params
+        ======
+            local_model (PyTorch model): weights will be copied from
+            target_model (PyTorch model): weights will be copied to
+            N (flintoat): number of steps after which hard update takes place 
+        """
+        if self.t_step % N == 0:
+            for target_param, local_param in zip(target_model.parameters(), local_model.parameters()):
+                target_param.data.copy_(local_param.data)
 
     def save(self):
         if not os.path.exists(self.savedir):
