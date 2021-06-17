@@ -1,11 +1,13 @@
 from environment.baseEnvironment import BaseEnvironment
 from agent.agent import Agent
 from options.options import gather_options, print_options
+from timer.timer import Timer
 from tqdm import tqdm
 from moviepy.editor import ImageSequenceClip
 import os
 import torch
 import wandb
+
 
 # gather options
 parser = gather_options()
@@ -33,23 +35,26 @@ def train(config):
         logs = {key: 0 for key in env.logged_rewards}
         logs["TDerror"] = 0
         logs["epsilon"] = eps
-        for _ in range(config.n_steps_per_episode):
-            # get action from current state
-            actions = agent.act(state, eps)
-            # observe next state and reward 
-            next_state, reward = env.step(actions) 
-            # update Q network using Q learning algo, return the TD error
-            TDerror = agent.step(state, actions, sum(reward.values()), next_state)
-            state = next_state
-            # store logs
-            for key, r in reward.items():
-                if key in logs:
-                    logs[key]+=r
-            logs["TDerror"]+=TDerror
+        # start episode
+        with Timer("episode", config.timer):
+            for _ in range(config.n_steps_per_episode):
+                # get action from current state
+                actions = agent.act(state, eps)
+                # observe next state and reward 
+                next_state, reward = env.step(actions) 
+                # update Q network using Q learning algo, return the TD error
+                TDerror = agent.step(state, actions, sum(reward.values()), next_state)
+                state = next_state
+                # store logs
+                for key, r in reward.items():
+                    if key in logs:
+                        logs[key]+=r
+                logs["TDerror"]+=TDerror
 
         # send logs to weights and biases
         if episode % config.log_freq == 0:
-            wandb.log(logs, step=agent.t_step, commit=True)
+            with Timer("wandb.log", config.timer):
+                wandb.log(logs, step=agent.t_step, commit=True)
                 
         # save agent locally
         if episode % config.save_every == 0 and agent.t_step>agent.exploring_steps:
@@ -61,54 +66,61 @@ def train(config):
             
         # update eps
         if agent.t_step>agent.exploring_steps:
-            eps = max(eps*EPS_DECAY_FACTOR, config.eps_end)
+            with Timer("decay eps", config.timer):
+                eps = max(eps*EPS_DECAY_FACTOR, config.eps_end)
     
     # at the very end save model as onnx for visualization and easy sharing to other frameworks
     dummy_input = torch.cat([env.sample(env.state).unsqueeze(0).unsqueeze(0)/255 for _ in range(10)], dim=0)
-    torch.onnx.export(agent.qnetwork_target, dummy_input, "qnetwork.onnx")
+    torch.onnx.export(agent.qnetwork_target, dummy_input, os.path.join(config.checkpoints_dir, "qnetwork.onnx"))
     wandb.save("qnetwork.onnx")
 
 
-
 def test(config, fname=None):
-    env.reset()
-    state = env.state
-    frames=[]
-    total_reward=0
-    for i in tqdm(range(config.n_steps_per_episode)):
-        actions = agent.act(state)
-        state, reward = env.step(actions)
-        frames.append(env.render(state, titleText='reward:{:.5f}'.format(sum(reward.values()))))
-        total_reward+=sum(reward.values())
-  
-    # save all frames as a GIF
-    if not os.path.exists(os.path.join(config.results_dir, config.name)):
-        os.makedirs(os.path.join(config.results_dir, config.name))
+    with Timer("test", config.timer):
+        env.reset()
+        state = env.state
+        frames=[]
+        total_reward=0
+        for i in tqdm(range(config.n_steps_per_episode)):
+            actions = agent.act(state)
+            state, reward = env.step(actions)
+            frames.append(env.render(state, titleText='reward:{:.5f}'.format(sum(reward.values()))))
+            total_reward+=sum(reward.values())
+    
+        # save all frames as a GIF
+        if not os.path.exists(os.path.join(config.results_dir, config.name)):
+            os.makedirs(os.path.join(config.results_dir, config.name))
 
-    clip = ImageSequenceClip(frames, fps=10)
-    if fname is None:
-        fname = "navigation_samp%d.gif"%env.VolumeID
-    clip.write_gif(os.path.join(config.results_dir, config.name, fname), fps=10)
+        clip = ImageSequenceClip(frames, fps=10)
+        if fname is None:
+            fname = "navigation_samp%d.gif"%env.VolumeID
+        clip.write_gif(os.path.join(config.results_dir, config.name, fname), fps=10)
 
-    # save also on wandb
-    wandb.log({"total_reward_collected_test": total_reward}, step=agent.t_step, commit=True)
-    wandb.save(os.path.join(config.results_dir, config.name, fname))
+        # save also on wandb
+        with Timer("wandab.log", config.timer):
+            wandb.log({"total_reward_collected_test": total_reward}, step=agent.t_step, commit=True)
+        with Timer("wandab.save", config.timer):
+            wandb.save(os.path.join(config.results_dir, config.name, fname))
 
 
 
 
 if __name__=="__main__":
-    if config.wandb in ["online", "offline"]:
-        wandb.login()
+
+    with Timer("init wandb", config.timer):
+        if config.wandb in ["online", "offline"]:
+            wandb.login()
 
     # tell wandb to get started
     with wandb.init(project="AutomaticUSnavigation", name=config.name, config=config, mode=config.wandb):
         # access all HPs through wandb.config, so logging matches execution!
         config = wandb.config
         # instanciate environment
-        env = BaseEnvironment(config)
+        with Timer("init env", config.timer):
+            env = BaseEnvironment(config)
         # instanciate agent
-        agent = Agent(env, config)
+        with Timer("init agent", config.timer):
+            agent = Agent(env, config)
         if config.load is not None:
             print("loading: {} ...".format(config.load))
             agent.load(config.load)
@@ -117,3 +129,5 @@ if __name__=="__main__":
             train(config)
         # test agent
         test(config)
+    
+    Timer(timer=config.timer).save(os.path.join(agent.savedir, "timer_logs.txt"))

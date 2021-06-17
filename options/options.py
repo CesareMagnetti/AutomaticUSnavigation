@@ -21,6 +21,7 @@ def gather_options():
                                                                 'disabled: completely shuts off wandb. (default = online)')
     parser.add_argument('--save_every', type=int, default=100, help="save Qnetworks every n episodes. Also tests the agent greedily for logs.")
     parser.add_argument('--log_freq', type=int, default=10, help="frequency (in episodes) with wich we store logs to weights and biases.") 
+    parser.add_argument('--timer', action='store_true', help='saves all relevant time logs.')
 
     # Qnetwork specs  
     parser.add_argument('--n_blocks_Q', type=int, default=6, help="number of convolutional blocks in the Qnetwork.")

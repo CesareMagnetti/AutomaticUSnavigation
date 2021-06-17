@@ -3,6 +3,7 @@ import SimpleITK as sitk
 import os
 import torch
 import cv2
+from timer.timer import Timer
 
 def get_traingle_area(a, b, c) :
     return 0.5 * np.linalg.norm( np.cross( b-a, c-a ) )
@@ -22,31 +23,38 @@ class BaseEnvironment():
 
         # get the devce for gpu dependencies
         self.device = torch.device('cuda' if parser.use_cuda else 'cpu')
-
+        # timer flaf
+        self.timer = parser.timer
         # load CT volume(s)
         volume_ids = parser.volume_ids.split(',')
         self.Volumes, self.Segmentations = [], []
-        for volume_id in volume_ids:
-            itkVolume = sitk.ReadImage(os.path.join(parser.dataroot, volume_id+"_CT_1.nii.gz"))
-            Volume = sitk.GetArrayFromImage(itkVolume)
-            
-            # load CT segmentation
-            itkSegmentation = sitk.ReadImage(os.path.join(parser.dataroot, volume_id+"_SEG_1.nii.gz"))
-            Segmentation = sitk.GetArrayFromImage(itkSegmentation)
+        with Timer("load volumes", parser.timer):
+            for volume_id in volume_ids:
+                with Timer("load volume", parser.timer):
+                    itkVolume = sitk.ReadImage(os.path.join(parser.dataroot, volume_id+"_CT_1.nii.gz"))
+                    Volume = sitk.GetArrayFromImage(itkVolume)
+                
+                # load CT segmentation
+                with Timer("load volume", parser.timer):
+                    itkSegmentation = sitk.ReadImage(os.path.join(parser.dataroot, volume_id+"_SEG_1.nii.gz"))
+                    Segmentation = sitk.GetArrayFromImage(itkSegmentation)
 
-            # preprocess volume
-            Volume = Volume/Volume.max()*255
-            if not parser.no_scale_intensity:
-                Volume = intensity_scaling(Volume, pmin=kwargs.pop('pmin', 150), pmax=kwargs.pop('pmax', 200),
-                                        nmin=kwargs.pop('nmin', 0), nmax=kwargs.pop('nmax', 255))
+                # preprocess volume
+                Volume = Volume/Volume.max()*255
+                if not parser.no_scale_intensity:
+                    with Timer("scale intensity", parser.timer):
+                        Volume = intensity_scaling(Volume, pmin=kwargs.pop('pmin', 150), pmax=kwargs.pop('pmax', 200),
+                                                nmin=kwargs.pop('nmin', 0), nmax=kwargs.pop('nmax', 255))
 
-            # save CT volume and segmentation as class attributes
-            Volume = torch.tensor(Volume, requires_grad=False, dtype=torch.uint8).to(self.device)
-            Segmentation = torch.tensor(Segmentation, requires_grad=False).to(self.device)
+                # save CT volume and segmentation as class attributes
+                with Timer(".to(device)", parser.timer):
+                    Volume = torch.tensor(Volume, requires_grad=False, dtype=torch.uint8).to(self.device)
+                with Timer(".to(device)", parser.timer):
+                    Segmentation = torch.tensor(Segmentation, requires_grad=False).to(self.device)
 
-            # append
-            self.Volumes.append(Volume)
-            self.Segmentations.append(Segmentation)
+                # append
+                self.Volumes.append(Volume)
+                self.Segmentations.append(Segmentation)
 
         # get starting configuration (Volume ID + starting state of the agents) NOTE: assuming all volumes have the same resolution!!!!!
         self.sx, self.sy, self.sz = self.Volumes[0].shape
@@ -64,144 +72,149 @@ class BaseEnvironment():
             self.logged_rewards+=["rewardArea"]
 
     def sample(self, state, return_seg=False, oob_black=True):
-        # get plane coefs
-        a,b,c,d = get_plane_coefs(*state)
+        with Timer("env.sample", self.timer):
+            # get plane coefs
+            a,b,c,d = get_plane_coefs(*state)
 
-        # extract corresponding slice
-        main_ax = np.argmax([abs(a), abs(b), abs(c)])
-        if main_ax == 0:
-            Y, Z = np.meshgrid(np.arange(self.sy), np.arange(self.sz), indexing='ij')
-            X = (d - b * Y - c * Z) / a
+            # extract corresponding slice
+            main_ax = np.argmax([abs(a), abs(b), abs(c)])
+            if main_ax == 0:
+                Y, Z = np.meshgrid(np.arange(self.sy), np.arange(self.sz), indexing='ij')
+                X = (d - b * Y - c * Z) / a
 
-            X = X.round().astype(np.int)
-            P = X.copy()
-            S = self.sx-1
+                X = X.round().astype(np.int)
+                P = X.copy()
+                S = self.sx-1
 
-            X[X <= 0] = 0
-            X[X >= self.sx] = self.sx-1
+                X[X <= 0] = 0
+                X[X >= self.sx] = self.sx-1
 
-        elif main_ax==1:
-            X, Z = np.meshgrid(np.arange(self.sx), np.arange(self.sz), indexing='ij')
-            Y = (d - a * X - c * Z) / b
+            elif main_ax==1:
+                X, Z = np.meshgrid(np.arange(self.sx), np.arange(self.sz), indexing='ij')
+                Y = (d - a * X - c * Z) / b
 
-            Y = Y.round().astype(np.int)
-            P = Y.copy()
-            S = self.sy-1
+                Y = Y.round().astype(np.int)
+                P = Y.copy()
+                S = self.sy-1
 
-            Y[Y <= 0] = 0
-            Y[Y >= self.sy] = self.sy-1
-        
-        elif main_ax==2:
-            X, Y = np.meshgrid(np.arange(self.sx), np.arange(self.sy), indexing='ij')
-            Z = (d - a * X - b * Y) / c
+                Y[Y <= 0] = 0
+                Y[Y >= self.sy] = self.sy-1
+            
+            elif main_ax==2:
+                X, Y = np.meshgrid(np.arange(self.sx), np.arange(self.sy), indexing='ij')
+                Z = (d - a * X - b * Y) / c
 
-            Z = Z.round().astype(np.int)
-            P = Z.copy()
-            S = self.sz-1
+                Z = Z.round().astype(np.int)
+                P = Z.copy()
+                S = self.sz-1
 
-            Z[Z <= 0] = 0
-            Z[Z >= self.sz] = self.sz-1
-        
-        # sample plane from the current volume
-        plane = self.Volumes[self.VolumeID][X, Y, Z]
+                Z[Z <= 0] = 0
+                Z[Z >= self.sz] = self.sz-1
+            
+            # sample plane from the current volume
+            plane = self.Volumes[self.VolumeID][X, Y, Z]
 
-        if oob_black == True:
-            plane[P < 0] = 0
-            plane[P > S] = 0
-        
-        if return_seg:
-            return plane, self.Segmentations[self.VolumeID][X, Y, Z]
-        else:
-            return plane
+            if oob_black == True:
+                plane[P < 0] = 0
+                plane[P > S] = 0
+            
+            if return_seg:
+                return plane, self.Segmentations[self.VolumeID][X, Y, Z]
+            else:
+                return plane
 
     def get_reward(self, seg):
-        # sample the according reward (i.e. count of pixels in left ventricle)
-        # the left ventricle ID in the segmentation is 2885. let's count the number
-        # of pixels in the left ventricle as a fit function, the agent will have to
-        # find a view that maximizes the amount of left ventricle present in the image.
-        rewardAnatomy = (seg==self.rewardID).sum().item()
-        rewardAnatomy/=np.prod(seg.shape) # normalize by all pixels count
+        with Timer("env.get_reward", self.timer):
+            # sample the according reward (i.e. count of pixels in left ventricle)
+            # the left ventricle ID in the segmentation is 2885. let's count the number
+            # of pixels in the left ventricle as a fit function, the agent will have to
+            # find a view that maximizes the amount of left ventricle present in the image.
+            rewardAnatomy = (seg==self.rewardID).sum().item()
+            rewardAnatomy/=np.prod(seg.shape) # normalize by all pixels count
 
-        # give a penalty for each step that does not contain any anatomical structure of interest.
-        # this should incentivize moving towards planes of interest quickly to not receive negative rewards.
-        if rewardAnatomy > 0:
-            rewardStep = 0
-        else:
-            rewardStep = -self.penalty_per_step 
+            # give a penalty for each step that does not contain any anatomical structure of interest.
+            # this should incentivize moving towards planes of interest quickly to not receive negative rewards.
+            if rewardAnatomy > 0:
+                rewardStep = 0
+            else:
+                rewardStep = -self.penalty_per_step 
 
-        # incentivize the agent to stay in a relevant plane (not at the edges of the volume) by
-        # maximizing the area of the triangle spanned by the three points
-        if self.area_penalty_weight>0.:
-            area = get_traingle_area(*self.state)
-            # normalize this area by the area of a 2D slice (like above)
-            area/=np.prod(seg.shape)
-            rewardArea = self.area_penalty_weight*area 
-        else:
-            rewardArea = 0
+            # incentivize the agent to stay in a relevant plane (not at the edges of the volume) by
+            # maximizing the area of the triangle spanned by the three points
+            if self.area_penalty_weight>0.:
+                area = get_traingle_area(*self.state)
+                # normalize this area by the area of a 2D slice (like above)
+                area/=np.prod(seg.shape)
+                rewardArea = self.area_penalty_weight*area 
+            else:
+                rewardArea = 0
 
-        return {"rewardAnatomy": rewardAnatomy, "rewardStep": rewardStep, "rewardArea": rewardArea}
+            return {"rewardAnatomy": rewardAnatomy, "rewardStep": rewardStep, "rewardArea": rewardArea}
 
     def step(self, increment):
-        # update current state
-        self.state+=increment
-        # observe the next plane and get the reward (from segmentation map)
-        _, segmentation = self.sample(state=self.state, return_seg=True)
-        reward = self.get_reward(segmentation)
-        return self.state, reward
+        with Timer("env.step", self.timer):
+            # update current state
+            self.state+=increment
+            # observe the next plane and get the reward (from segmentation map)
+            _, segmentation = self.sample(state=self.state, return_seg=True)
+            reward = self.get_reward(segmentation)
+            return self.state, reward
     
     def reset(self):
-        # sample a random volume to use throughout the episode
-        self.VolumeID = np.random.choice(np.arange(self.n_Volumes))
-        # sample a random plane (defined by 3 points) to start the episode from
-        pointA = np.array([np.random.uniform(low=0., high=1)*self.sx,
-                           0,
-                           np.random.uniform(low=0., high=1.)*self.sz])
+        with Timer("env.reset", self.timer):
+            # sample a random volume to use throughout the episode
+            self.VolumeID = np.random.choice(np.arange(self.n_Volumes))
+            # sample a random plane (defined by 3 points) to start the episode from
+            pointA = np.array([np.random.uniform(low=0., high=1)*self.sx,
+                            0,
+                            np.random.uniform(low=0., high=1.)*self.sz])
 
-        pointB = np.array([np.random.uniform(low=0., high=1.)*self.sx,
-                           self.sy,
-                           np.random.uniform(low=0., high=1.)*self.sz])
+            pointB = np.array([np.random.uniform(low=0., high=1.)*self.sx,
+                            self.sy,
+                            np.random.uniform(low=0., high=1.)*self.sz])
 
-        pointC = np.array([np.random.uniform(low=0., high=1.)*self.sx,
-                           self.sy,
-                           np.random.uniform(low=0., high=1.)*self.sz])
-                
-        # stack points to define the current state of the environment
-        self.state = np.vstack([pointA, pointB, pointC])
+            pointC = np.array([np.random.uniform(low=0., high=1.)*self.sx,
+                            self.sy,
+                            np.random.uniform(low=0., high=1.)*self.sz])
+                    
+            # stack points to define the current state of the environment
+            self.state = np.vstack([pointA, pointB, pointC])
     
     def render(self, state, with_seg=False, titleText=None, show=False):
-        # get the slice and segmentation corresponding to the current state
-        if with_seg:
-            slice, seg = self.sample(state=state, return_seg=True) 
-            slice, seg = slice.cpu().numpy().squeeze(), seg.cpu().numpy().squeeze()
-            # stack image and segmentation, progate through channel dim since black and white
-            # must do this to call ``ImageSequenceClip`` later.
-            image = np.hstack([slice[..., np.newaxis] * np.ones(3), seg[..., np.newaxis] * np.ones(3)])
-        else:
-            slice = self.sample(state=state)
-            slice = slice.cpu().numpy().squeeze()
-            image = slice[..., np.newaxis] * np.ones(3)
+        with Timer("env.render", self.timer):
+            # get the slice and segmentation corresponding to the current state
+            if with_seg:
+                slice, seg = self.sample(state=state, return_seg=True) 
+                slice, seg = slice.cpu().numpy().squeeze(), seg.cpu().numpy().squeeze()
+                # stack image and segmentation, progate through channel dim since black and white
+                # must do this to call ``ImageSequenceClip`` later.
+                image = np.hstack([slice[..., np.newaxis] * np.ones(3), seg[..., np.newaxis] * np.ones(3)])
+            else:
+                slice = self.sample(state=state)
+                slice = slice.cpu().numpy().squeeze()
+                image = slice[..., np.newaxis] * np.ones(3)
 
-        # put title on image
-        if titleText is not None:
-            title = np.zeros((40, image.shape[1], image.shape[2]))
-            font = cv2.FONT_HERSHEY_SIMPLEX
-            # get boundary of this text
-            textsize = cv2.getTextSize(titleText, font, 1, 2)[0]
-            # get coords based on boundary
-            textX = int((title.shape[1] - textsize[0]) / 2)
-            textY = int((title.shape[0] + textsize[1]) / 2)
-            # put text on the title image
-            cv2.putText(title, titleText, (textX, textY ), font, 1, (255, 255, 255), 2)
-            # stack title to image
-            image = np.vstack([title, image])
-        
-        if show:
-            # Show the image
-            cv2.imshow("Environment", image)
-            # This line is necessary to give time for the image to be rendered on the screen
-            cv2.waitKey(1)
-        else:
-            return image
+            # put title on image
+            if titleText is not None:
+                title = np.zeros((40, image.shape[1], image.shape[2]))
+                font = cv2.FONT_HERSHEY_SIMPLEX
+                # get boundary of this text
+                textsize = cv2.getTextSize(titleText, font, 1, 2)[0]
+                # get coords based on boundary
+                textX = int((title.shape[1] - textsize[0]) / 2)
+                textY = int((title.shape[0] + textsize[1]) / 2)
+                # put text on the title image
+                cv2.putText(title, titleText, (textX, textY ), font, 1, (255, 255, 255), 2)
+                # stack title to image
+                image = np.vstack([title, image])
+            
+            if show:
+                # Show the image
+                cv2.imshow("Environment", image)
+                # This line is necessary to give time for the image to be rendered on the screen
+                cv2.waitKey(1)
+            else:
+                return image
 
 
 # ==== HELPER FUNCTIONS ====
