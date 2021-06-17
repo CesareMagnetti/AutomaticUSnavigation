@@ -29,34 +29,36 @@ def train(config):
         # choose a random volume and a random starting plane
         env.reset()
         state = env.state
-        rewards, TDerrors = 0, 0
+        # initiate episode logs
+        logs = {key: 0 for key in env.logged_rewards}
+        logs["TDerror"] = 0
+        logs["epsilon"] = eps
         for _ in range(config.n_steps_per_episode):
             # get action from current state
             actions = agent.act(state, eps)
             # observe next state and reward 
             next_state, reward = env.step(actions) 
             # update Q network using Q learning algo, return the TD error
-            TDerror = agent.step(state, actions, reward, next_state)
+            TDerror = agent.step(state, actions, sum(reward.values()), next_state)
             state = next_state
             # store logs
-            rewards+=reward
-            TDerrors+=TDerror
+            for key, r in reward.items():
+                if key in logs:
+                    logs[key]+=r
+            logs["TDerror"]+=TDerror
 
         # send logs to weights and biases
         if episode % config.log_freq == 0:
-            wandb.log({"total_TD_error": TDerrors,
-                       "total_reward_collected": rewards,
-                       "epsilon": eps}, step=agent.t_step)
+            wandb.log(logs, step=agent.t_step)
                 
         # save agent locally
         if episode % config.save_every == 0 and agent.t_step>agent.exploring_steps:
             print("saving latest model weights...")
             agent.save()
-
-        # save a gif of the agent exploiting its policy
-        if episode % config.save_trajectory_every == 0:
+            agent.save("episode%d.pth"%episode)
+            # tests the agent greedily for logs
             test(config, "episode%d.gif"%episode)
-
+            
         # update eps
         if agent.t_step>agent.exploring_steps:
             eps = max(eps*EPS_DECAY_FACTOR, config.eps_end)
@@ -76,8 +78,8 @@ def test(config, fname=None):
     for i in tqdm(range(config.n_steps_per_episode)):
         actions = agent.act(state)
         state, reward = env.step(actions)
-        frames.append(env.render(state, titleText='reward:{:.5f}'.format(reward)))
-        total_reward+=reward
+        frames.append(env.render(state, titleText='reward:{:.5f}'.format(sum(reward.values()))))
+        total_reward+=sum(reward.values())
   
     # save all frames as a GIF
     if not os.path.exists(os.path.join(config.results_dir, config.name)):
