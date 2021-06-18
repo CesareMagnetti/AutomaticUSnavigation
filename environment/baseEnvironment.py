@@ -9,20 +9,6 @@ from timer.timer import Timer
 def get_traingle_area(a, b, c) :
     return 0.5 * np.linalg.norm( np.cross( b-a, c-a ) )
 
-def plot_cube(x, y, z, dx, dy, dz, color='red'):
-    fig = plt.figure()
-    ax = Axes3D(fig)
-    xx = [x, x, x+dx, x+dx, x]
-    yy = [y, y+dy, y+dy, y, y]
-    kwargs = {'alpha': 1, 'color': color}
-    ax.plot3D(xx, yy, [z]*5, **kwargs)
-    ax.plot3D(xx, yy, [z+dz]*5, **kwargs)
-    ax.plot3D([x, x], [y, y], [z, z+dz], **kwargs)
-    ax.plot3D([x, x], [y+dy, y+dy], [z, z+dz], **kwargs)
-    ax.plot3D([x+dx, x+dx], [y+dy, y+dy], [z, z+dz], **kwargs)
-    ax.plot3D([x+dx, x+dx], [y, y], [z, z+dz], **kwargs)
-
-    
 class BaseEnvironment():
     def __init__(self, parser, **kwargs):
         """Initialize an Environment object.
@@ -47,7 +33,7 @@ class BaseEnvironment():
             for volume_id in volume_ids:
                 with Timer("load volume", parser.timer):
                     itkVolume = sitk.ReadImage(os.path.join(parser.dataroot, volume_id+"_CT_1.nii.gz"))
-                    Volume = sitk.GetArrayFromImage(itkVolume)
+                    Volume = sitk.GetArrayFromImage(itkVolume).astype(np.uint8)
                 
                 # load CT segmentation
                 with Timer("load volume", parser.timer):
@@ -67,7 +53,7 @@ class BaseEnvironment():
                 with Timer(".to(device)", parser.timer):
                     Segmentation = torch.tensor(Segmentation, requires_grad=False).to(self.device)
 
-                # append
+                # append to lists
                 self.Volumes.append(Volume)
                 self.Segmentations.append(Segmentation)
 
@@ -89,7 +75,7 @@ class BaseEnvironment():
     def sample(self, state, return_seg=False, oob_black=True):
         with Timer("env.sample", self.timer):
             # get plane coefs
-            a,b,c,d = get_plane_coefs(*state)
+            a,b,c,d = get_plane_coefs(*state[1])
 
             # extract corresponding slice
             main_ax = np.argmax([abs(a), abs(b), abs(c)])
@@ -126,15 +112,15 @@ class BaseEnvironment():
                 Z[Z <= 0] = 0
                 Z[Z >= self.sz] = self.sz-1
             
-            # sample plane from the current volume
-            plane = self.Volumes[self.VolumeID][X, Y, Z]
+            # sample plane from the current volume, convert to tensor and normalize
+            plane = self.Volumes[state[0]][X, Y, Z].unsqueeze(0).unsqueeze(0)/255
 
             if oob_black == True:
-                plane[P < 0] = 0
-                plane[P > S] = 0
+                plane[:, :, P < 0] = 0
+                plane[:, :, P > S] = 0
             
             if return_seg:
-                return plane, self.Segmentations[self.VolumeID][X, Y, Z]
+                return plane, self.Segmentations[state[0]][X, Y, Z]
             else:
                 return plane
 
@@ -157,7 +143,7 @@ class BaseEnvironment():
             # incentivize the agent to stay in a relevant plane (not at the edges of the volume) by
             # maximizing the area of the triangle spanned by the three points
             if self.area_penalty_weight>0.:
-                area = get_traingle_area(*self.state)
+                area = get_traingle_area(*self.state[1])
                 # normalize this area by the area of a 2D slice (like above)
                 area/=np.prod(seg.shape)
                 rewardArea = self.area_penalty_weight*area 
@@ -169,7 +155,7 @@ class BaseEnvironment():
     def step(self, increment):
         with Timer("env.step", self.timer):
             # update current state
-            self.state+=increment
+            self.state[1]+=increment
             # observe the next plane and get the reward (from segmentation map)
             _, segmentation = self.sample(state=self.state, return_seg=True)
             reward = self.get_reward(segmentation)
@@ -178,7 +164,7 @@ class BaseEnvironment():
     def reset(self):
         with Timer("env.reset", self.timer):
             # sample a random volume to use throughout the episode
-            self.VolumeID = np.random.choice(np.arange(self.n_Volumes))
+            VolumeID = np.random.choice(np.arange(self.n_Volumes))
             # sample a random plane (defined by 3 points) to start the episode from
             pointA = np.array([np.random.uniform(low=0., high=1)*self.sx,
                             0,
@@ -192,15 +178,18 @@ class BaseEnvironment():
                             self.sy,
                             np.random.uniform(low=0., high=1.)*self.sz])
                     
-            # stack points to define the current state of the environment
-            self.state = np.vstack([pointA, pointB, pointC])
+            # stack points to define the all coordinates 
+            coord = np.vstack([pointA, pointB, pointC])
+
+            # state is defined as the volumeID-coord tuple
+            self.state = [VolumeID, coord]
     
     def render(self, state, with_seg=False, withCube=False, titleText=None, show=False):
         with Timer("env.render", self.timer):
             # get the slice and segmentation corresponding to the current state
             if with_seg:
                 slice, seg = self.sample(state=state, return_seg=True) 
-                slice, seg = slice.cpu().numpy().squeeze(), seg.cpu().numpy().squeeze()
+                slice, seg = slice.cpu().numpy().squeeze()*255, seg.cpu().numpy().squeeze() # un-normalize slice for plotting
                 # stack image and segmentation, progate through channel dim since black and white
                 # must do this to call ``ImageSequenceClip`` later.
                 image = np.hstack([slice[..., np.newaxis] * np.ones(3), seg[..., np.newaxis] * np.ones(3)])
@@ -211,7 +200,7 @@ class BaseEnvironment():
 
             if withCube:
                 # get plane coefs
-                a,b,c,d = get_plane_coefs(*state)
+                a,b,c,d = get_plane_coefs(*state[1])
 
                 # plot the 2D slice on a 3D surface
                 

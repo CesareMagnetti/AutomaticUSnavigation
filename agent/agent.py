@@ -6,6 +6,7 @@ import torch
 import torch.optim as optim
 import os
 from timer.timer import Timer
+import concurrent.futures
 
 class Agent():
     """Interacts with and learns from the environment."""
@@ -93,14 +94,17 @@ class Agent():
         
         Params
         ======
-            state (array_like): current state
+            state (namedtuple): current state (volID, coord)
             eps (float): epsilon, for epsilon-greedy action selection
         """
         with Timer("agent.act", self.timer):
-            slice = self.env.sample(state).unsqueeze(0).unsqueeze(0)/255 # normalize slice (which is a uint8) before inputiing it to the Qnetwork
+            # convert to tensor and normalize slice (which is a uint8) before inputting it to the Qnetwork
+            with Timer(".to(device)", self.timer):
+                slice = self.env.sample(state).float().to(self.device)
             self.qnetwork_local.eval()
             with torch.no_grad():
-                Qs = self.qnetwork_local(slice)
+                with Timer("qnetwork.forward", self.timer):
+                    Qs = self.qnetwork_local(slice)
             self.qnetwork_local.train()
             # Epsilon-greedy action selection
             if random.random() > eps and self.t_step>self.exploring_steps:
@@ -118,12 +122,19 @@ class Agent():
         """
         with Timer("agent.step", self.timer):
             states, actions, rewards, next_states = experiences
-
-            # get corresponding slices for the states and next states (divide by 255 to normalize input as sample() yields uint8 slices)
+            # get corresponding slices for the states and next states, use multi-threading as sampling takes a while
+            # with Timer("multi-threaded sample", self.timer):
+            #     results = []
+            #     with concurrent.futures.ThreadPoolExecutor() as executor:
+            #         futures = [executor.submit(self.env.sample, s) for s in states+next_states]
+            #     [results.append(f.result()) for f in futures]
+            with Timer("not multi-threaded sample", self.timer):
+                results = [self.env.sample(state=s) for s in states+next_states]
+            # concatenate states and move to gpu
             with Timer(".to(device)", self.timer):
-                states = torch.cat([self.env.sample(state=s).unsqueeze(0).unsqueeze(0)/255 for s in states], axis=0).float().to(self.device)
+                states = torch.cat(results[:self.batch_size], axis=0).float().to(self.device)
             with Timer(".to(device)", self.timer):
-                next_states = torch.cat([self.env.sample(state=s).unsqueeze(0).unsqueeze(0)/255 for s in next_states], axis=0).float().to(self.device)
+                next_states = torch.cat(results[self.batch_size:], axis=0).float().to(self.device)
             # convert rewards and actions to tensor and move to gpu
             with Timer(".to(device)", self.timer):
                 rewards = torch.from_numpy(rewards).float().to(self.device)
@@ -291,10 +302,11 @@ class ReplayBuffer:
         """Randomly sample a batch of experiences from memory."""
         with Timer("buffer.sample", self.timer):
             experiences = random.sample(self.memory, k=self.batch_size)
-            states = np.vstack([e.state[np.newaxis, ...] for e in experiences if e is not None])
+            # reorganize batch
+            states = [e.state for e in experiences if e is not None]
             actions = np.vstack([e.action[np.newaxis, ...] for e in experiences if e is not None])
             rewards = np.vstack([e.reward for e in experiences if e is not None])
-            next_states = np.vstack([e.next_state[np.newaxis, ...] for e in experiences if e is not None])
+            next_states = [e.next_state for e in experiences if e is not None]
             return (states, actions, rewards, next_states)
 
     def __len__(self):
