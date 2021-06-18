@@ -3,11 +3,26 @@ import SimpleITK as sitk
 import os
 import torch
 import cv2
+from mpl_toolkits.mplot3d import Axes3D
 from timer.timer import Timer
 
 def get_traingle_area(a, b, c) :
     return 0.5 * np.linalg.norm( np.cross( b-a, c-a ) )
 
+def plot_cube(x, y, z, dx, dy, dz, color='red'):
+    fig = plt.figure()
+    ax = Axes3D(fig)
+    xx = [x, x, x+dx, x+dx, x]
+    yy = [y, y+dy, y+dy, y, y]
+    kwargs = {'alpha': 1, 'color': color}
+    ax.plot3D(xx, yy, [z]*5, **kwargs)
+    ax.plot3D(xx, yy, [z+dz]*5, **kwargs)
+    ax.plot3D([x, x], [y, y], [z, z+dz], **kwargs)
+    ax.plot3D([x, x], [y+dy, y+dy], [z, z+dz], **kwargs)
+    ax.plot3D([x+dx, x+dx], [y+dy, y+dy], [z, z+dz], **kwargs)
+    ax.plot3D([x+dx, x+dx], [y, y], [z, z+dz], **kwargs)
+
+    
 class BaseEnvironment():
     def __init__(self, parser, **kwargs):
         """Initialize an Environment object.
@@ -180,7 +195,7 @@ class BaseEnvironment():
             # stack points to define the current state of the environment
             self.state = np.vstack([pointA, pointB, pointC])
     
-    def render(self, state, with_seg=False, titleText=None, show=False):
+    def render(self, state, with_seg=False, withCube=False, titleText=None, show=False):
         with Timer("env.render", self.timer):
             # get the slice and segmentation corresponding to the current state
             if with_seg:
@@ -194,6 +209,12 @@ class BaseEnvironment():
                 slice = slice.cpu().numpy().squeeze()
                 image = slice[..., np.newaxis] * np.ones(3)
 
+            if withCube:
+                # get plane coefs
+                a,b,c,d = get_plane_coefs(*state)
+
+                # plot the 2D slice on a 3D surface
+                
             # put title on image
             if titleText is not None:
                 title = np.zeros((40, image.shape[1], image.shape[2]))
