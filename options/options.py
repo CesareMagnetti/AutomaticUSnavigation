@@ -19,7 +19,7 @@ def gather_options():
                                                                 'online: launches online interface.\n'\
                                                                 'offline: writes all data to disk for later syncing to a server\n'\
                                                                 'disabled: completely shuts off wandb. (default = online)')
-    parser.add_argument('--save_every', type=int, default=100, help="save Qnetworks every n episodes. Also tests the agent greedily for logs.")
+    parser.add_argument('--save_freq', type=int, default=100, help="save Qnetworks every n episodes. Also tests the agent greedily for logs.")
     parser.add_argument('--log_freq', type=int, default=10, help="frequency (in episodes) with wich we store logs to weights and biases.") 
     parser.add_argument('--timer', action='store_true', help='saves all relevant time logs.')
 

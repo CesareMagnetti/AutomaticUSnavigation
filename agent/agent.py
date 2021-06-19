@@ -1,177 +1,167 @@
 import numpy as np
 import random
-from collections import namedtuple, deque
 from .Qnetworks import SimpleQNetwork as QNetwork
 import torch
 import torch.optim as optim
 import os
 from timer.timer import Timer
 import concurrent.futures
+import wandb
 
 class Agent():
     """Interacts with and learns from the environment."""
 
-    def __init__(self, env, parser):
+    def __init__(self, parser):
         """Initialize an Agent object.
         s
         Params that we will use:
         ======
-            env (environmet object): environment for the agent, see ./environments for more details
-            parser (argparse): parser with all training flags (see main.py)
+            parser (argparse object): parser with all training options (see options/options.py)
         """
-
-        # save the environment
-        self.env = env
-        # timer
-        self.timer = parser.timer
+        # Initialize time step count
+        self.t_step = 0
         # saveroot for the model checkpoints
         self.savedir = os.path.join(parser.checkpoints_dir, parser.name)
-        # how many actions can each agent do
-        self.action_size = parser.action_size
-        # how many agents we have
-        self.n_agents = parser.n_agents
-        # random seed for reproducibility
-        self.seed = random.seed(parser.seed)
         # get the device for gpu dependencies
         self.device = torch.device('cuda' if parser.use_cuda else 'cpu')
-        # discount factor
-        self.gamma = parser.gamma
-        # flag for hard/soft update
-        self.target_update = parser.target_update
-        # delay for hard update
-        self.delay_steps = parser.delay_steps
-        # tau for soft target network update
-        self.tau = parser.tau
-        # lr for q networks
-        self.lr = parser.learning_rate
-        # learn from buffer every ``update_every`` steps
-        self.update_every = parser.update_every
-        # purely exploring steps at the beginning
-        self.exploring_steps = parser.exploring_steps
+        # all other needed configs
+        self.config = parser
+        # formulate a suitable decay factor for epsilon given the queried options.
+        self.EPS_DECAY_FACTOR = (parser.eps_end/parser.eps_start)**(1/int(parser.stop_eps_decay*parser.n_episodes - parser.exploring_steps/parser.n_steps_per_episode))
         # loss
-        self.loss = torch.nn.SmoothL1Loss()
-        # batch size
-        self.batch_size = parser.batch_size
-        # replay buffer size
-        self.buffer_size = parser.buffer_size
-
+        self.loss = torch.nn.MSELoss()
         # Q-Network
-        with Timer("init qnetworkr", self.timer):
-            self.qnetwork_local = QNetwork((1, env.sx, env.sy), self.action_size, self.n_agents, parser.seed, parser.n_blocks_Q,
+        self.qnetwork_local = QNetwork((1, parser.load_size, parser.load_size), parser.action_size, parser.n_agents, parser.seed, parser.n_blocks_Q,
+                                       parser.downsampling_Q, parser.n_features_Q, not parser.no_dropout_Q).to(self.device)
+        self.qnetwork_target = QNetwork((1, parser.load_size, parser.load_size), parser.action_size, parser.n_agents, parser.seed, parser.n_blocks_Q,
                                         parser.downsampling_Q, parser.n_features_Q, not parser.no_dropout_Q).to(self.device)
-        print("Q Network instanciated: (%d parameters)"%self.qnetwork_local.count_parameters())
-        print(self.qnetwork_local)
-        with Timer("init qnetworkr", self.timer):
-            self.qnetwork_target = QNetwork((1, env.sx, env.sy), self.action_size, self.n_agents, parser.seed, parser.n_blocks_Q,
-                                            parser.downsampling_Q, parser.n_features_Q, not parser.no_dropout_Q).to(self.device)
-        self.optimizer = optim.Adam(self.qnetwork_local.parameters(), lr=self.lr)
+        print("Q Network instanciated: (%d parameters)\nrun with --print_network flag to see network details"%self.qnetwork_local.count_parameters())
+        if parser.print_network:
+            print(self.qnetwork_local)
+        # Optimizer for local network
+        self.optimizer = optim.Adam(self.qnetwork_local.parameters(), lr=parser.learning_rate)
+        
 
-        # Replay memory
-        with Timer("init buffer", self.timer):
-            self.memory = ReplayBuffer(self.action_size, self.buffer_size, self.batch_size, self.seed, self.timer)
-        # Initialize time step (for updating every UPDATE_EVERY steps)
-        self.t_step = 0
-
-    def step(self, state, actions, reward, next_state):
-        with Timer("agent.step", self.timer):
-            # convert increment actions back to their ids
-            actions = np.vstack([self.mapIncrementToAction(a) for a in actions])
-            # Save experience in replay memory
-            self.memory.add(state, actions, reward, next_state)
-            
-            # Learn every UPDATE_EVERY time steps.
-            self.t_step+= 1
-            if self.t_step % self.update_every == 0 and self.t_step>self.exploring_steps and len(self.memory) > self.batch_size:
-                # If enough samples are available in memory, get random subset and learn
-                experiences = self.memory.sample()
-                loss = self.learn(experiences)
-                return loss
-            else:
-                return 0
-
-    def act(self, state, eps=0.):
+    def train(self, env):  
+        eps = self.config.eps_start
+        # tell wandb to watch what the model gets up to: gradients, weights, and more!
+        wandb.watch(self.qnetwork_target, self.loss, log="all", log_freq=self.config.log_freq)
+        for episode in range(self.config.n_episodes):
+            # reset env to a random initial slice
+            env.reset()
+            slice = env.sample(env.state)
+            logs = {log: 0 for log in env.logged_rewards}
+            logs["TDerror"] = 0
+            for _ in range(self.config.n_steps_per_episode):  
+                # increase time step
+                self.t_step+=1
+                # get action from current state
+                actions = self.act(slice, eps)  
+                # observe next state (automatically adds (state, action, reward, next_state) to env.buffer) 
+                next_slice, rewards = env.step(actions)
+                # learn every UPDATE_EVERY steps, only after EXPLORING_STEPS and if enough samples in env.buffer
+                if self.t_step % self.config.update_every == 0 and self.t_step>self.config.exploring_steps and len(env.buffer) > self.config.batch_size:
+                    batch = self.memory.sample()
+                    TDerror = self.learn(batch)
+                else:
+                    TDerror = 0
+                # set slice to next slice
+                slice= next_slice
+                # add to logs
+                logs["TDerror"]+=TDerror
+                for r in rewards:
+                    logs[r]+=rewards[r]
+            # save logs to wandb
+            if episode%self.config.log_freq == 0:
+                wandb.log(logs, step=self.t_step, commit=True)
+                    # save agent locally
+            if episode % self.config.save_freq == 0 and self.t_step>self.config.exploring_steps:
+                print("saving latest model weights...")
+                self.save()
+                self.save("episode%d.pth"%episode)
+                # tests the agent greedily for logs
+                self.test(env, "episode%d.gif"%episode)
+            # update eps
+            if self.t_step>self.config.exploring_steps:
+                eps = max(eps*self.EPS_DECAY_FACTOR, self.config.eps_end)
+        
+    def act(self, slice, eps=0.):
         """Returns actions for given state as per current policy.
         
         Params
         ======
-            state (namedtuple): current state (volID, coord)
-            eps (float): epsilon, for epsilon-greedy action selection
+            slice (torch.tensor): a slice through the volume (see SingleVolumeEnvironment.sample())
+            eps (float): epsilon, for epsilon-greedy action selection. By default it will return the greedy action.
         """
-        with Timer("agent.act", self.timer):
-            # convert to tensor and normalize slice (which is a uint8) before inputting it to the Qnetwork
-            with Timer(".to(device)", self.timer):
-                slice = self.env.sample(state).float().to(self.device)
-            self.qnetwork_local.eval()
-            with torch.no_grad():
-                with Timer("qnetwork.forward", self.timer):
-                    Qs = self.qnetwork_local(slice)
-            self.qnetwork_local.train()
-            # Epsilon-greedy action selection
-            if random.random() > eps and self.t_step>self.exploring_steps:
-                return np.vstack([self.mapActionToIncrement(torch.argmax(Q, dim=1).item()) for Q in Qs])
-            else:
-                if self.t_step == self.exploring_steps:
-                    print("finished %d exploring steps, starting to train the agent every %d steps."%(self.exploring_steps, self.update_every))
-                return np.vstack([self.mapActionToIncrement(random.choice(np.arange(self.action_size)))for _ in range(self.n_agents)])
+        self.qnetwork_local.eval()
+        with torch.no_grad():
+            Qs = self.qnetwork_local(slice)
+        self.qnetwork_local.train()
+        # greedy action with prob. (1-eps) and only if we are done exploring
+        if random.random() > eps and self.t_step>self.exploring_steps:
+            return np.vstack([torch.argmax(Q, dim=1).item() for Q in Qs])
+        # random action otherwise
+        else:
+            return np.vstack([random.choice(np.arange(self.action_size)) for _ in range(self.n_agents)])
 
-    def learn(self, experiences):
+    def learn(self, batch):
         """Update value parameters using given batch of experience tuples.
         Params
         ======
-            experiences (Tuple[torch.Tensor]): tuple of (s, a, r, s') tuples 
+            batch (Tuple[torch.Tensor]): tuple of (s, a, r, s') tuples 
         """
-        with Timer("agent.step", self.timer):
-            states, actions, rewards, next_states = experiences
-            # get corresponding slices for the states and next states, use multi-threading as sampling takes a while
-            # with Timer("multi-threaded sample", self.timer):
-            #     results = []
-            #     with concurrent.futures.ThreadPoolExecutor() as executor:
-            #         futures = [executor.submit(self.env.sample, s) for s in states+next_states]
-            #     [results.append(f.result()) for f in futures]
-            with Timer("not multi-threaded sample", self.timer):
-                results = [self.env.sample(state=s) for s in states+next_states]
-            # concatenate states and move to gpu
-            with Timer(".to(device)", self.timer):
-                states = torch.cat(results[:self.batch_size], axis=0).float().to(self.device)
-            with Timer(".to(device)", self.timer):
-                next_states = torch.cat(results[self.batch_size:], axis=0).float().to(self.device)
-            # convert rewards and actions to tensor and move to gpu
-            with Timer(".to(device)", self.timer):
-                rewards = torch.from_numpy(rewards).float().to(self.device)
-            with Timer(".to(device)", self.timer):
-                actions = torch.from_numpy(actions).long().to(self.device)
-            # get the action values of the current states and the target values of the next states 
-            with Timer("qnetwork.forward", self.timer):
-                Qs = self.qnetwork_local(states)
-            with Timer("qnetwork.forward", self.timer):
-                MaxQs = self.qnetwork_target(next_states)
-            # train the Qnetwork
-            self.optimizer.zero_grad()
-            for Q, A, MaxQ in zip(Qs, actions.permute(1,0,2), MaxQs):
-                # gather Q value for the action taken
-                Q = Q.gather(1, A)
-                # get the value of the best action in the next state
-                # detach to only optimize local network
-                MaxQ = MaxQ.max(1)[0].detach().unsqueeze(-1)
-                # backup the expected value of this action  
-                Qhat = rewards + self.gamma*MaxQ
-                # evalauate TD error
-                with Timer("agent.loss", self.timer):
-                    loss = self.loss(Q, Qhat)
-                # retain graph because we will backprop multiple times through the backbone cnn
-                with Timer("loss.backward", self.timer):
-                    loss.backward(retain_graph=True)
-            self.optimizer.step()
+        states, actions, rewards, next_states = batch
+        # sample planes using multi-thread
+        # planes = []
+        # with concurrent.futures.ThreadPoolExecutor() as executor:
+        #     futures = [executor.submit(self.env.sample, s) for s in states+next_states]
+        # [planes.append(f.result()) for f in futures]
+        # sample planes using a single-thread
+        planes = [self.env.sample(state=s) for s in states+next_states]
+        # concatenate states and move to gpu
+        states = torch.cat(planes[:self.batch_size], axis=0)
+        next_states = torch.cat(planes[self.batch_size:], axis=0)
+        print("states: ", states.shape, "next_states: ", next_states.shape)
+        # convert rewards to tensor and move to gpu
+        rewards = torch.from_numpy(rewards).float().to(self.device)
+        print("rewards: ", rewards.shape)
+        # convert actions to tensor, actions are currently stored as a list of length batch_size, where each entry is
+        # an np.vstack([action1, action2, action3]). We need to convert this to a list of:
+        # [action1]*batch_size + [action2]*batch_size + [action3]*batch_size so thats it's coherent with Q and MaxQ
+        print("actions from buffer: ", actions)
+        actions = torch.from_numpy(np.hstack(actions)).long().to(self.device)
+        print("actions rearranged: ", actions, actions.shape)
+        # get the action values of the current states and the target values of the next states 
+        # concatenate outputs of all agents so that we have shape: batch_sizex(n_agents*action_size)
+        Q = torch.cat(self.qnetwork_local(states), dim=-1)
+        MaxQ = torch.cat(self.qnetwork_target(next_states), dim=-1)
+        print("Q: ", Q.shape, "MaxQ: ", MaxQ.shape)
+        # train the Qnetwork
+        # REMEMBER TO RESHAPE ACTIONS!!!
+        self.optimizer.zero_grad()
+        for Q, A, MaxQ in zip(Qs, actions.permute(1,0,2), MaxQs):
+            # gather Q value for the action taken
+            Q = Q.gather(1, A)
+            # get the value of the best action in the next state
+            # detach to only optimize local network
+            MaxQ = MaxQ.max(1)[0].detach().unsqueeze(-1)
+            # backup the expected value of this action  
+            Qhat = rewards + self.gamma*MaxQ
+            # evalauate TD error
+            loss = self.loss(Q, Qhat)
+            # retain graph because we will backprop multiple times through the backbone cnn
+            loss.backward(retain_graph=True)
+        self.optimizer.step()
 
-            # ------------------- update target network ------------------- #
-            if self.target_update == "soft":
-                self.soft_update(self.qnetwork_local, self.qnetwork_target, self.tau)   
-            elif self.target_update == "hard":
-                self.hard_update(self.qnetwork_local, self.qnetwork_target, self.delay_steps)
-            else:
-                raise ValueError('unknown ``self.target_update``: {}. possible options: [hard, soft]'.format(self.target_update))
+        # ------------------- update target network ------------------- #
+        if self.target_update == "soft":
+            self.soft_update(self.qnetwork_local, self.qnetwork_target, self.tau)   
+        elif self.target_update == "hard":
+            self.hard_update(self.qnetwork_local, self.qnetwork_target, self.delay_steps)
+        else:
+            raise ValueError('unknown ``self.target_update``: {}. possible options: [hard, soft]'.format(self.target_update))
 
-            return loss.item()                  
+        return loss.item()                  
 
     def soft_update(self, local_model, target_model, tau):
         """Soft update model parameters.
@@ -182,9 +172,8 @@ class Agent():
             target_model (PyTorch model): weights will be copied to
             tau (float): interpolation parameter 
         """
-        with Timer("agent.soft_update", self.timer):
-            for target_param, local_param in zip(target_model.parameters(), local_model.parameters()):
-                target_param.data.copy_(tau*local_param.data + (1.0-tau)*target_param.data)
+        for target_param, local_param in zip(target_model.parameters(), local_model.parameters()):
+            target_param.data.copy_(tau*local_param.data + (1.0-tau)*target_param.data)
     
     def hard_update(self, local_model, target_model, N):
         """hard update model parameters.
@@ -195,120 +184,19 @@ class Agent():
             target_model (PyTorch model): weights will be copied to
             N (flintoat): number of steps after which hard update takes place 
         """
-        with Timer("agent.hard_update", self.timer):
-            if self.t_step % N == 0:
-                for target_param, local_param in zip(target_model.parameters(), local_model.parameters()):
-                    target_param.data.copy_(local_param.data)
+        if self.t_step % N == 0:
+            for target_param, local_param in zip(target_model.parameters(), local_model.parameters()):
+                target_param.data.copy_(local_param.data)
 
     def save(self, fname="latest.pth"):
-        with Timer("agent.save", self.timer):
-            if not os.path.exists(self.savedir):
-                os.makedirs(self.savedir)
-            torch.save(self.qnetwork_target.state_dict(), os.path.join(self.savedir, fname))
+        if not os.path.exists(self.savedir):
+            os.makedirs(self.savedir)
+        torch.save(self.qnetwork_target.state_dict(), os.path.join(self.savedir, fname))
 
     def load(self, name):
-        with Timer("agent.load", self.timer):
-            print("loading: {}".format(os.path.join(self.savedir, name)))
-            if not ".pth" in name:
-                name+=".pth"
-            state_dict = torch.load(os.path.join(self.savedir, name))
-            self.qnetwork_local.load_state_dict(state_dict)
-            self.qnetwork_target.load_state_dict(state_dict)
-
-    def mapActionToIncrement(self, action):
-        """ 
-        using the following convention:
-        0: +1 in x coordinate
-        1: -1 in x coordinate
-        2: +1 in y coordinate
-        3: -1 in y coordinate
-        4: +1 in z coordinate
-        5: -1 in z coordinate
-        """
-        with Timer("agent.mapActionToIncrement", self.timer):
-            if action == 0:
-                incr = np.array([1, 0, 0])
-            elif action == 1:
-                incr = np.array([-1, 0, 0])
-            elif action == 2:
-                incr = np.array([0, 1, 0])
-            elif action == 3:
-                incr = np.array([0, -1, 0])
-            elif action == 4:
-                incr = np.array([0, 0, 1])
-            elif action == 5:
-                incr = np.array([0, 0, -1])
-            else:
-                raise ValueError('unknown action: %d, legal actions: [0, 1, 2, 3, 4, 5]'%action)
-            
-            return incr
-
-    def mapIncrementToAction(self, incr):
-        """ 
-        using the following convention:
-        0: +1 in x coordinate
-        1: -1 in x coordinate
-        2: +1 in y coordinate
-        3: -1 in y coordinate
-        4: +1 in z coordinate
-        5: -1 in z coordinate
-        """
-        with Timer("agent.mapIncrementToAction", self.timer):
-            if incr[0] == 1:
-                action = 0
-            elif incr[0] == -1:
-                action = 1
-            elif incr[1] == 1:
-                action = 2
-            elif incr[1] == -1:
-                action = 3
-            elif incr[2] == 1:
-                action = 4
-            elif incr[2] == -1:
-                action = 5
-            else:
-                raise ValueError('unknown increment: {}.'.format(incr))
-            
-            return action
-
-
-class ReplayBuffer:
-    """Fixed-size buffer to store experience tuples."""
-
-    def __init__(self, action_size, buffer_size, batch_size, seed, timer):
-        """Initialize a ReplayBuffer object.
-        Params
-        ======
-            action_size (int): dimension of each action
-            buffer_size (int): maximum size of buffer
-            batch_size (int): size of each training batch
-            seed (int): random seed
-        """
-        self.action_size = action_size
-        self.memory = deque(maxlen=buffer_size)  
-        self.batch_size = batch_size
-        # note that action is going to contain the action of each agent
-        self.experience = namedtuple("Experience", field_names=["state", "action", "reward", "next_state"])
-        self.seed = random.seed(seed)
-        self.timer = timer
-    
-    def add(self, state, action, reward, next_state):
-        """Add a new experience to memory."""
-        with Timer("buffer.add", self.timer):
-            e = self.experience(state, action, reward, next_state)
-            self.memory.append(e)
-    
-    def sample(self):
-        """Randomly sample a batch of experiences from memory."""
-        with Timer("buffer.sample", self.timer):
-            experiences = random.sample(self.memory, k=self.batch_size)
-            # reorganize batch
-            states = [e.state for e in experiences if e is not None]
-            actions = np.vstack([e.action[np.newaxis, ...] for e in experiences if e is not None])
-            rewards = np.vstack([e.reward for e in experiences if e is not None])
-            next_states = [e.next_state for e in experiences if e is not None]
-            return (states, actions, rewards, next_states)
-
-    def __len__(self):
-        """Return the current size of internal memory."""
-        return len(self.memory)
+        print("loading: {}".format(os.path.join(self.savedir, name)))
+        if not ".pth" in name:
+            name+=".pth"
+        state_dict = torch.load(os.path.join(self.savedir, name))
+        self.qnetwork_local.load_state_dict(state_dict)
+        self.qnetwork_target.load_state_dict(state_dict)
