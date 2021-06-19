@@ -1,7 +1,46 @@
 import torch
 import torch.nn as nn
+from collections import deque, namedtuple
+import random
+import numpy as np
 import functools
 import os
+
+# ========== REPLAY BUFFER CLASS =========
+class ReplayBuffer:
+    """Fixed-size buffer to store experience tuples."""
+
+    def __init__(self, buffer_size, batch_size):
+        """Initialize a ReplayBuffer object.
+        Params
+        ======
+            buffer_size (int): capacity of the replay buffer
+            batch_size (int): batch size sampled each time we call self.sample()
+
+        """
+
+        self.memory = deque(maxlen=buffer_size)  
+        self.batch_size = batch_size
+        # note that action is going to contain the action of each agent
+        self.experience = namedtuple("Experience", field_names=["state", "action", "reward", "next_state"])
+    
+    def add(self, state, action, reward, next_state):
+        """Add a new experience to memory."""
+        e = self.experience(state, action, reward, next_state)
+        self.memory.append(e)
+    
+    def sample(self):
+        """Randomly sample a batch of experiences from memory."""
+        experiences = random.sample(self.memory, k=self.batch_size)
+        # reorganize batch
+        batch = self.experience(*zip(*experiences))
+        print(batch)
+        return batch
+
+    def __len__(self):
+        """Return the current size of internal memory."""
+        return len(self.memory)
+
 
 def get_model(name, use_cuda=False):
     # instanciate cyclegan architecture used in CT2UStransfer (this is also the default architecture recommended by the authors)

@@ -60,7 +60,12 @@ def gather_options():
     parser.add_argument('--delay_steps', type=int, default=5000, help="delay with which a hard update of the target network is conducted.")
 
     # preprocessing
+    parser.add_argument('--load_size', type=int, default=256, help="resolution to load the data. By default 256 isotropic resolution.")
     parser.add_argument('--no_scale_intensity', action='store_true', help="If you do not want to scale the intensities of the CT volume.")
+    parser.add_argument('--pmin', type=int, default=150, help="pmin value for xcatEnvironment/intensity_scaling() function.")
+    parser.add_argument('--pmax', type=int, default=200, help="pmax value for xcatEnvironment/intensity_scaling() function.")
+    parser.add_argument('--nmin', type=int, default=0, help="nmin value for xcatEnvironment/intensity_scaling() function.")
+    parser.add_argument('--nmax', type=int, default=255, help="nmax value for xcatEnvironment/intensity_scaling() function.")
 
     # random seed for reproducibility
     parser.add_argument('--seed', type=int, default=1, help="random seed for reproducibility.")
