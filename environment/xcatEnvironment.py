@@ -114,7 +114,7 @@ class SingleVolumeEnvironment(BaseEnvironment):
             Z[Z <= 0] = 0
             Z[Z >= self.sz] = self.sz-1
         
-        # sample plane from the current volume, convert to tensor and normalize to (0, 1)
+        # sample plane from the current volume
         plane = self.Volume[X, Y, Z]
 
         if oob_black == True:

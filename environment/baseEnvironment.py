@@ -4,8 +4,9 @@ from matplotlib import pyplot as plt
 import numpy as np
 from tqdm import tqdm
 from abc import abstractmethod, ABCMeta
-import torch.multiprocessing as mp
+import matplotlib.gridspec as gridspec
 import concurrent.futures
+from moviepy.editor import ImageSequenceClip
 
 @six.add_metaclass(ABCMeta)
 class BaseEnvironment(object):
@@ -87,7 +88,7 @@ class BaseEnvironment(object):
             return_trajectory (bool): if True we return the trajectory followed by the agent.
         """
         # get how many steps to do before each restart
-        restart_freq = n_random_steps/(n_random_restarts+1)
+        restart_freq = int(n_random_steps/(n_random_restarts+1))
         # get the trajectory if needed
         if return_trajectory:
             trajectory = []
@@ -107,9 +108,75 @@ class BaseEnvironment(object):
         if return_trajectory:
             return trajectory
 
-            
+    def render_light(self, states, fname):
+        """Lightweight rendering function for a given trajectory of states. only plots the CT slice.
+        """
+        # 1. sample the plane(s)
+        if isinstance(states, np.ndarray):
+            states = [states]
+        slices = [slice[..., np.newaxis]*np.ones(3) for slice in self.sample_planes(states)]
+        clip = ImageSequenceClip(slices, fps=10)
+        clip.write_gif(os.path.join(self.results_dir, fname+".gif"), fps=10)
 
-    def render(self, states, with_seg=False, with_cube=False, fname="sample"):
+    def save_frame_heavy(self, slice, state=None, seg=None, savepath="./sample.png"):
+        """Renders a single state or many states. If many states it will use multiple processes.
+        Params:
+        ==========
+            states (np.ndarray] or list of such tuples): list of states to render.
+            with_seg (bool): flag if to render the segmentations as well as the states.
+            with_cube (bool): flag if to render the orientation of the sampled plane along with the plane itself.
+            savepath (str): name of the file we will save
+        """
+        fig = plt.figure()
+
+        # add the CT slice
+        ax = fig.add_subplot(111)
+        ax.imshow(slice, cmap='gray', vmin=slice.min(), vmax=slice.max())
+        
+        ax.set_title("CT slice")
+
+        # add the segmentation if needed
+        if seg is not None:
+            gs = gridspec.GridSpec(1,2)
+            fig.axes[0].set_position(gs[0].get_position(fig)) # move previous plot to top left
+            ax = fig.add_subplot(gs[1])
+            ax.imshow(seg, cmap='gray', vmin=seg.min(), vmax=seg.max())
+            ax.set_title("seg slice")
+        
+        # add orientation of plane if needed
+        if state is not None:
+            if seg is not None:
+                gs = gridspec.GridSpec(1,3)
+                fig.axes[0].set_position(gs[0].get_position(fig)) # move first plot to top left
+                fig.axes[1].set_position(gs[1].get_position(fig)) # move second plot to center
+                ax = fig.add_subplot(gs[2], projection='3d')
+            else:
+                gs = gridspec.GridSpec(1,2)
+                fig.axes[0].set_position(gs[0].get_position(fig)) # move previous plot to top left
+                ax = fig.add_subplot(gs[1], projection='3d')
+            
+            # draw cube + plane
+            xx = [0, 0, self.sx, self.sx, 0]
+            yy = [0, self.sy, self.sy, 0, 0]
+            kwargs = {'alpha': 0.3, 'color': 'red'}
+            ax.plot3D(xx, yy, [0]*5, **kwargs)
+            ax.plot3D(xx, yy, [self.sz]*5, **kwargs)
+            ax.plot3D([0, 0], [0, 0], [0, self.sz], **kwargs)
+            ax.plot3D([0, 0], [self.sy, self.sy], [0, self.sz], **kwargs)
+            ax.plot3D([self.sx, self.sx], [self.sy, self.sy], [0, self.sz], **kwargs)
+            ax.plot3D([self.sx, self.sx], [0, 0], [0, self.sz], **kwargs)
+            # plot the 2D slice on a 3D surface
+            xx, yy = np.meshgrid(range(self.sx), range(self.sy))
+            a,b,c,d = self.get_plane_coefs(*state)
+            zz = (-d -a*xx -b*yy)/c
+            ax.plot_surface(xx,yy,zz, alpha=0.7)
+            ax.set_title("slice orientation")
+
+        # save figure
+        plt.savefig(savepath)
+        plt.close(fig)
+
+    def render_heavy(self, states, with_seg=False, with_cube=False, fname="sample"):
         """Renders a single state or many states. If many states it will use multiple processes.
         Params:
         ==========
@@ -123,59 +190,30 @@ class BaseEnvironment(object):
             states = [states]
         slices = self.sample_planes(states, return_seg=with_seg)
 
-        # 2. render each plane
-        fig = plt.figure(0)
-        for i, (state, slice) in enumerate(states, slices):
-            if with_seg:
-                slice, seg = slice
-            else:
-                seg = None
+        # 2. organize inputs to save_frame()
+        if with_seg:
+            slices, segs = list(zip(*slices))
+        else:
+            segs = [None]*len(slices)
+        if not with_cube:
+            states = [None]*len(slices)
 
-            # get the slice and segmentation corresponding to the current state
-            if seg is not None:
-                slice = slice.cpu().numpy().squeeze()*255 # un-normalize slice for plotting
-                ax = fig.add_subplot(111)
-                ax.imshow(slice, cmap="Greys")
-                ax.set_title("CT slice")
-                ax = fig.add_subplot(212)
-                ax.imshow(seg, cmap="Greys")
-                ax.set_title("seg slice")
-            else:
-                slice = slice.cpu().numpy().squeeze()
-                ax = fig.add_subplot(111)
-                ax.imshow(slice, cmap="Greys")
-                ax.set_title("CT slice")
-                
-            if state is not None:
-                if seg is not None:
-                    ax = fig.add_subplot(313, projection='3d')
-                else:
-                    ax = fig.add_subplot(212, projection='3d')
-                # plot the volume as a cube
-                xx = [0, 0, self.sx, self.sx, 0]
-                yy = [0, self.sy, self.sy, 0, 0]
-                kwargs = {'alpha': 0.3, 'color': 'red'}
-                ax.plot3D(xx, yy, [0]*5, **kwargs)
-                ax.plot3D(xx, yy, [self.sz]*5, **kwargs)
-                ax.plot3D([0, 0], [0, 0], [0, self.sz], **kwargs)
-                ax.plot3D([0, 0], [self.sy, self.sy], [0, self.sz], **kwargs)
-                ax.plot3D([self.sx, self.sx], [self.sy, self.sy], [0, self.sz], **kwargs)
-                ax.plot3D([self.sx, self.sx], [0, 0], [0, self.sz], **kwargs)
-                # plot the 2D slice on a 3D surface
-                xx, yy = np.meshgrid(range(self.sx), range(self.sy))
-                a,b,c,d = self.get_plane_coefs(*state)
-                zz = (-d -a*xx -b*yy)/c
-                ax.plot_surface(xx,yy,zz, alpha=0.7)
-                ax.set_title("slice orientation")
-            if not os.path.exists("./temp_frames"):
-                os.makedirs("./temp_frames")
-            plt.savefig("./temp_frames/%d.png"%i)
+        # 3. create the single frames in parallel
+        if not os.path.exists("./temp_frames"):
+            os.makedirs("./temp_frames")
+        params = list(zip(slices, states, segs))
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            [executor.submit(self.save_frame, *param, savepath="./temp_frames/{}.png".format(i)) for i,param in enumerate(params)]
+        # for i, (slice,state,seg) in tqdm(enumerate(params), desc='rendering'):
+        #     self.save_frame(slice,state,seg,savepath="./temp_frames/{}.png".format(i))
         
         # 3. make an animation with all successive frames or save the single frame passed
-        if i>0:
-            #create GIF with image magick convert function
-            os.system('convert   -delay 4   -loop 0   ./temp_frames/*.png   animatedTrajectory.gif')
-
+        if not os.path.exists(os.path.join(self.results_dir, "visuals")):
+            os.makedirs(os.path.join(self.results_dir, "visuals"))
+        #create GIF with image magick convert function
+        os.system('convert   -delay 4   -loop 0   ./temp_frames/*.png   {}.gif'.format(os.path.join(self.results_dir, "visuals", fname)))
+        # remove ./temp_frames
+        os.system('rm -rf ./temp_frames')
 
     @staticmethod
     def get_plane_coefs(p1, p2, p3):
