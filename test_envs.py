@@ -15,9 +15,6 @@ print_options(config, parser)
 if __name__ == "__main__":
     env = SingleVolumeEnvironment(config, vol_id=0)
     print("current volume used: {}".format(env.vol_id))
-    fig, frames = env.random_walk(config.exploring_steps, config.exploring_restarts, visual=True)
-    im_ani = animation.ArtistAnimation(fig, frames, interval=50, repeat_delay=3000, blit=True)
-    if not os.path.exists(os.path.join(env.results_dir, "random_walk.gif")):
-        os.makedirs(os.path.join(env.results_dir, "random_walk.gif"))
-    #im_ani.save(os.path.join(env.results_dir, "random_walk.mp4"))
-    plt.show()
+    trajectory = env.random_walk(config.exploring_steps, config.exploring_restarts, return_trajectory=True)
+    planes = env.sample_planes(trajectory, return_seg=True)
+    print(len(planes),planes[0][0].shape, planes[0][1].shape)

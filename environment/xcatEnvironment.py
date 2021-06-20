@@ -29,12 +29,12 @@ class SingleVolumeEnvironment(BaseEnvironment):
         
         # load queried CT volume
         itkVolume = sitk.ReadImage(os.path.join(self.dataroot, self.vol_id+"_CT_1.nii.gz"))
-        Volume = sitk.GetArrayFromImage(itkVolume).astype(np.uint8)  
+        Volume = sitk.GetArrayFromImage(itkVolume) 
         # preprocess volume
         if not config.no_preprocess:
             Volume = Volume/Volume.max()*255
             Volume = intensity_scaling(Volume, pmin=config.pmin, pmax=config.pmax, nmin=config.nmin, nmax=config.nmax)
-        self.Volume = Volume   
+        self.Volume = Volume.astype(np.uint8)  
 
         # load queried CT segmentation
         itkSegmentation = sitk.ReadImage(os.path.join(self.dataroot, self.vol_id+"_SEG_1.nii.gz"))
@@ -115,11 +115,11 @@ class SingleVolumeEnvironment(BaseEnvironment):
             Z[Z >= self.sz] = self.sz-1
         
         # sample plane from the current volume, convert to tensor and normalize to (0, 1)
-        plane = torch.tensor(self.Volume[X, Y, Z]/255, device=self.device).float().unsqueeze(0).unsqueeze(0)
+        plane = self.Volume[X, Y, Z]
 
         if oob_black == True:
-            plane[:, :, P < 0] = 0
-            plane[:, :, P > S] = 0
+            plane[P < 0] = 0
+            plane[P > S] = 0
         
         if return_seg:
             return plane, self.Segmentation[X, Y, Z]

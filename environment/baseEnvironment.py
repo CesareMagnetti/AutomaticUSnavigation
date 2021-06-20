@@ -5,6 +5,7 @@ import numpy as np
 from tqdm import tqdm
 from abc import abstractmethod, ABCMeta
 import torch.multiprocessing as mp
+import concurrent.futures
 
 @six.add_metaclass(ABCMeta)
 class BaseEnvironment(object):
@@ -22,6 +23,10 @@ class BaseEnvironment(object):
         self.dataroot = config.dataroot
         self.checkpoints_dir = os.path.join(config.checkpoints_dir, config.name)
         self.results_dir = os.path.join(config.results_dir, config.name)
+        if not os.path.exists(self.checkpoints_dir):
+            os.makedirs(self.checkpoints_dir)
+        if not os.path.exists(self.results_dir):
+            os.makedirs(self.results_dir)
         # set up the device
         self.device = torch.device('cuda' if config.use_cuda else 'cpu')
         # set up the replay buffer
@@ -51,7 +56,7 @@ class BaseEnvironment(object):
         """
         raise NotImplementedError()
     
-    def sample_planes(self, states, *args):
+    def sample_planes(self, states, **kwargs):
         """Sample multiple queried planes launching multiple threads in parallel. This function is useful if the self.sample_plane()
         function is time consuming and we whish to query several planes. And example of this scenario is when we sample a batch from
         the replay buffer: it is impractical to store full image frames in the replay buffer, it is more efficient to only store the
@@ -67,89 +72,110 @@ class BaseEnvironment(object):
         """
         # sample planes using multi-thread
         planes = []
-        for state in range(states):
-            p = mp.Process(target=self.sample_plane, args=(state, *args))
-            p.start()
-            planes.append(p)
-
-        for p in planes:
-            p.join()
-
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            futures = [executor.submit(self.sample_plane, state, **kwargs) for state in states]
+        [planes.append(f.result()) for f in futures]
         return planes
     
-    def random_walk(self, n_random_steps, n_random_restarts = 0, visual=False):
+    def random_walk(self, n_random_steps, n_random_restarts = 0, return_trajectory=False):
         """ Starts a random walk to gather observations (s, a, r, s').
         Will return the number of unique states reached by each agent to quantify the amount of exploration
         Params:
         ==========
             n_random_steps (int): number of steps for which we want the random walk to continue.
             n_random_restarts (int): number of times we reset the agent to a random position during the walk.
-            return_trajectory (bool): if True we return plt frames of the trajectory.
+            return_trajectory (bool): if True we return the trajectory followed by the agent.
         """
         # get how many steps to do before each restart
         restart_freq = n_random_steps/(n_random_restarts+1)
-        t_step, run = 0, 1
-        # get the visuals if needed
-        if visual:
-            fig = plt.figure()
-            frames = []
+        # get the trajectory if needed
+        if return_trajectory:
+            trajectory = []
         # start the random walk
         self.reset()
         for step in tqdm(range(1, n_random_steps+1), desc="random walk..."):
-            t_step+=1
             # random action
             action = np.vstack([random.choice(np.arange(self.config.action_size)) for _ in range(self.config.n_agents)])
             # step the environment according to this random action (automatically stores (s, a, r ,s') to buffer)
             _ = self.step(action)
             # get the visual if needed
-            if visual:
-                frames.append((self.render(self.state, fig, titleText="run%d   step:%d (total: %d)"%(run, t_step, step)),))
+            if return_trajectory:
+                trajectory.append(self.state)
             # restart environment if needed
             if step % restart_freq == 0:
-                t_step = 0
-                run+=1
                 self.reset()
-        
-        if visual:
-            return fig, frames
+        if return_trajectory:
+            return trajectory
 
-    def render(self, state, fig=None, with_seg=False, withCube=False, titleText=None, show=False):
-        if fig is None:
-            fig = plt.figure()
-        if titleText:
-            fig.suptitle(titleText)
-        # get the slice and segmentation corresponding to the current state
-        if with_seg:
-            slice, seg = self.sample_plane(state=state, return_seg=True) 
-            slice, seg = slice.cpu().numpy().squeeze()*255, seg.cpu().numpy().squeeze() # un-normalize slice for plotting
-            ax = fig.add_subplot(111)
-            ax.imshow(slice, cmap="Greys")
-            ax.set_title("CT slice")
-            ax = fig.add_subplot(212)
-            ax.imshow(seg, cmap="Greys")
-            ax.set_title("seg slice")
-        else:
-            slice = self.sample_plane(state=state)
-            slice = slice.cpu().numpy().squeeze()
-            ax = fig.add_subplot(111)
-            ax.imshow(slice, cmap="Greys")
-            ax.set_title("CT slice")
             
-        if withCube:
-            if with_seg:
-                ax = fig.add_suplot(313, projection='3d')
-            else:
-                ax = fig.add_subplot(212, projection='3d')
-            # plot the volume as a cube
-            ax.voxels(np.ones((self.sx,self.sy,self.sz)), facecolors=np.full((self.sx,self.sy,self.sz), 'red', dtype=object), alpha=0.2)
-            # plot the 2D slice on a 3D surface
-            xx, yy = np.meshgrid(range(self.sx), range(self.sy))
-            a,b,c,d = self.get_plane_coefs(*state)
-            zz = (-d -a*xx -b*yy)/c
-            ax.plot_surface(xx,yy,zz, c = 'b', alpha=0.6)
-            ax.set_title("slice orientation")
 
-        return plt.gcf()
+    def render(self, states, with_seg=False, with_cube=False, fname="sample"):
+        """Renders a single state or many states. If many states it will use multiple processes.
+        Params:
+        ==========
+            states (np.ndarray] or list of such tuples): list of states to render.
+            with_seg (bool): flag if to render the segmentations as well as the states.
+            with_cube (bool): flag if to render the orientation of the sampled plane along with the plane itself.
+            fname (str): name of the file we will save
+        """
+        # 1. sample the plane(s)
+        if isinstance(states, np.ndarray):
+            states = [states]
+        slices = self.sample_planes(states, return_seg=with_seg)
+
+        # 2. render each plane
+        fig = plt.figure(0)
+        for i, (state, slice) in enumerate(states, slices):
+            if with_seg:
+                slice, seg = slice
+            else:
+                seg = None
+
+            # get the slice and segmentation corresponding to the current state
+            if seg is not None:
+                slice = slice.cpu().numpy().squeeze()*255 # un-normalize slice for plotting
+                ax = fig.add_subplot(111)
+                ax.imshow(slice, cmap="Greys")
+                ax.set_title("CT slice")
+                ax = fig.add_subplot(212)
+                ax.imshow(seg, cmap="Greys")
+                ax.set_title("seg slice")
+            else:
+                slice = slice.cpu().numpy().squeeze()
+                ax = fig.add_subplot(111)
+                ax.imshow(slice, cmap="Greys")
+                ax.set_title("CT slice")
+                
+            if state is not None:
+                if seg is not None:
+                    ax = fig.add_subplot(313, projection='3d')
+                else:
+                    ax = fig.add_subplot(212, projection='3d')
+                # plot the volume as a cube
+                xx = [0, 0, self.sx, self.sx, 0]
+                yy = [0, self.sy, self.sy, 0, 0]
+                kwargs = {'alpha': 0.3, 'color': 'red'}
+                ax.plot3D(xx, yy, [0]*5, **kwargs)
+                ax.plot3D(xx, yy, [self.sz]*5, **kwargs)
+                ax.plot3D([0, 0], [0, 0], [0, self.sz], **kwargs)
+                ax.plot3D([0, 0], [self.sy, self.sy], [0, self.sz], **kwargs)
+                ax.plot3D([self.sx, self.sx], [self.sy, self.sy], [0, self.sz], **kwargs)
+                ax.plot3D([self.sx, self.sx], [0, 0], [0, self.sz], **kwargs)
+                # plot the 2D slice on a 3D surface
+                xx, yy = np.meshgrid(range(self.sx), range(self.sy))
+                a,b,c,d = self.get_plane_coefs(*state)
+                zz = (-d -a*xx -b*yy)/c
+                ax.plot_surface(xx,yy,zz, alpha=0.7)
+                ax.set_title("slice orientation")
+            if not os.path.exists("./temp_frames"):
+                os.makedirs("./temp_frames")
+            plt.savefig("./temp_frames/%d.png"%i)
+        
+        # 3. make an animation with all successive frames or save the single frame passed
+        if i>0:
+            #create GIF with image magick convert function
+            os.system('convert   -delay 4   -loop 0   ./temp_frames/*.png   animatedTrajectory.gif')
+
 
     @staticmethod
     def get_plane_coefs(p1, p2, p3):
