@@ -22,7 +22,7 @@ class ReplayBuffer:
         self.memory = deque(maxlen=buffer_size)  
         self.batch_size = batch_size
         # note that action is going to contain the action of each agent
-        self.experience = namedtuple("Experience", field_names=["state", "action", "reward", "next_state"])
+        self.experience = namedtuple("Experience", field_names=["states", "actions", "rewards", "next_states"])
     
     def add(self, state, action, reward, next_state):
         """Add a new experience to memory."""
@@ -34,7 +34,6 @@ class ReplayBuffer:
         experiences = random.sample(self.memory, k=self.batch_size)
         # reorganize batch
         batch = self.experience(*zip(*experiences))
-        print(batch)
         return batch
 
     def __len__(self):

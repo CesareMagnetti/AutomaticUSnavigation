@@ -57,7 +57,7 @@ class BaseEnvironment(object):
         """
         raise NotImplementedError()
     
-    def sample_planes(self, states, **kwargs):
+    def sample_planes(self, states, process=False, **kwargs):
         """Sample multiple queried planes launching multiple threads in parallel. This function is useful if the self.sample_plane()
         function is time consuming and we whish to query several planes. And example of this scenario is when we sample a batch from
         the replay buffer: it is impractical to store full image frames in the replay buffer, it is more efficient to only store the
@@ -68,6 +68,7 @@ class BaseEnvironment(object):
         Params
         ==========
         states (list/tuple), all states that we wish to sample.
+        process (bool), if normalize and unsqueeze the planes before returning them
 
         returns -> planes (list), a list containing all sampled planes
         """
@@ -76,6 +77,9 @@ class BaseEnvironment(object):
         with concurrent.futures.ThreadPoolExecutor() as executor:
             futures = [executor.submit(self.sample_plane, state, **kwargs) for state in states]
         [planes.append(f.result()) for f in futures]
+        # normalize and unsqueeze tensor if needed
+        if process:
+            planes = [p[np.newaxis, np.newaxis, ...]/255 for p in planes]
         return planes
     
     def random_walk(self, n_random_steps, n_random_restarts = 0, return_trajectory=False):
