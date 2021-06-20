@@ -1,4 +1,4 @@
-from environment.baseEnvironment import BaseEnvironment
+from environment.xcatEnvironment import SingleVolumeEnvironment
 from agent.agent import Agent
 from options.options import gather_options, print_options
 from timer.timer import Timer

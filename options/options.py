@@ -55,13 +55,14 @@ def gather_options():
     parser.add_argument('--learning_rate', '-lr', type=float, default=0.0002, help="learning rate for the q network.")
     parser.add_argument('--update_every', type=int, default=1, help="how often to update the network, in steps.")
     parser.add_argument('--exploring_steps', type=int, default=50000, help="number of purely exploring steps at the beginning.")
+    parser.add_argument('--exploring_restarts', type=int, default=0, help="number of random restarts for the exploring steps.")
     parser.add_argument('--target_update', type=str, default="hard", help="hard or soft update for target network. If hard specify --delay_steps. If soft specify --tau.")
     parser.add_argument('--tau', type=int, default=1e-3, help="weight for soft update of target parameters.")
     parser.add_argument('--delay_steps', type=int, default=5000, help="delay with which a hard update of the target network is conducted.")
 
     # preprocessing
     parser.add_argument('--load_size', type=int, default=256, help="resolution to load the data. By default 256 isotropic resolution.")
-    parser.add_argument('--no_scale_intensity', action='store_true', help="If you do not want to scale the intensities of the CT volume.")
+    parser.add_argument('--no_preprocess', action='store_true', help="If you do not want to preprocess the CT volume. (set to uint8 and scale intensities)")
     parser.add_argument('--pmin', type=int, default=150, help="pmin value for xcatEnvironment/intensity_scaling() function.")
     parser.add_argument('--pmax', type=int, default=200, help="pmax value for xcatEnvironment/intensity_scaling() function.")
     parser.add_argument('--nmin', type=int, default=0, help="nmin value for xcatEnvironment/intensity_scaling() function.")
