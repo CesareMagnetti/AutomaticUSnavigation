@@ -91,8 +91,7 @@ class SingleVolumeAgent(BaseAgent):
         # LAUNCHES A SINGLE ENVIRONMENT SEQUENTIALLY
         else:
             for _ in tqdm(range(self.config.n_episodes), desc="training..."):
-                self.play_episode(env)
-                
+                self.play_episode(env)     
         # close wandb
         wandb.finish()
 

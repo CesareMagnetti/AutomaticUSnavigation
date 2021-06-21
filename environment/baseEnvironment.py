@@ -82,24 +82,24 @@ class BaseEnvironment(object):
             planes = [p[np.newaxis, np.newaxis, ...]/255 for p in planes]
         return planes
 
-    def random_walks(self, n_random_steps, n_walks, return_trajectory=False):
-        """ Starts ``n_walks`` random walks in parallel to gather observations (s, a, r, s').
-        See self.random_walk() for more details.
-        Params:
-        ==========
-            n_random_steps (int): number of steps for which we want the random walks to continue.
-            n_walks (int): number of walks we want to do.
-            return_trajectory (bool): if True we return the trajectories followed by the agent.
-        """
-        n_random_steps = int(n_random_steps/n_walks)
+    # def random_walks(self, n_random_steps, n_walks, return_trajectory=False):
+    #     """ Starts ``n_walks`` random walks in parallel to gather observations (s, a, r, s').
+    #     See self.random_walk() for more details.
+    #     Params:
+    #     ==========
+    #         n_random_steps (int): number of steps for which we want the random walks to continue.
+    #         n_walks (int): number of walks we want to do.
+    #         return_trajectory (bool): if True we return the trajectories followed by the agent.
+    #     """
+    #     n_random_steps = int(n_random_steps/n_walks)
         
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            futures = [executor.submit(self.random_walk, n_random_steps, return_trajectory=return_trajectory) for _ in range(n_walks)]
+    #     with concurrent.futures.ThreadPoolExecutor() as executor:
+    #         futures = [executor.submit(self.random_walk, n_random_steps, return_trajectory=return_trajectory) for _ in range(n_walks)]
         
-        if return_trajectory:
-            walks = []
-            walks= [f.result() for f in futures]
-            return walks
+    #     if return_trajectory:
+    #         walks = []
+    #         walks= [f.result() for f in futures]
+    #         return walks
 
     
     def random_walk(self, n_random_steps, n_random_restarts = 0, return_trajectory=False):

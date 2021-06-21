@@ -10,11 +10,20 @@ config.use_cuda = torch.cuda.is_available()
 print_options(config, parser)
 
 if __name__=="__main__":
-        # instanciate environment
-        env = SingleVolumeEnvironment(config)
+        # instanciate environment(s)
+        vol_ids = config.volume_ids.split(",")
+        if len(vol_ids)>1:
+                env = []
+                for vol_id in range(len(vol_ids)):
+                        env.append(SingleVolumeEnvironment(config, vol_id=vol_id))
+        else:
+                if config.n_processes>1:
+                        env = [SingleVolumeEnvironment(config)]*config.n_processes
+                else:
+                        env = SingleVolumeEnvironment(config)
+
         # instanciate agent
         agent = SingleVolumeAgent(config)
         # train agent
         agent.train(env)
-        # test agent when done training
-        agent.test(config.n_steps_per_episode, env, "test_trajectory")
+

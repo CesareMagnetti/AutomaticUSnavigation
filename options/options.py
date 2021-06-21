@@ -48,6 +48,8 @@ def gather_options():
     parser.add_argument('--stop_eps_decay', type=float, default=0.9, help="after what fraction of episodes we want to have eps = --eps_end.")
     parser.add_argument('--loss', type=str, default="MSE", help='which loss to use to optimize the Qnetwork (MSE, SmoothL1).')
     parser.add_argument('--trainer', type=str, default="DeepQLearning", help='which training routine to use (DeepQLearning, DoubleDeepQLearning...).')
+    parser.add_argument('--n_processes', type=int, default=1, help="number of processes to launch together, if more volumes are passed in --volume_ids then those are launched in parallel and ``n_processes == len(volume_ids.split(','))``.")
+
 
     # training options (specific)
     parser.add_argument('--batch_size', type=int, default=64, help="batch size for the replay buffer.")
