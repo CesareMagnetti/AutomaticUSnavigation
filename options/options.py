@@ -7,7 +7,7 @@ def gather_options():
     parser = argparse.ArgumentParser(description='train/test scripts to launch navigation experiments.')
     # I/O directories and data
     parser.add_argument('--dataroot', '-r',  type=str, help='path to the XCAT CT volumes.')
-    parser.add_argument('--name', '-n', type=str, default='sample_experiment', help='name of the experiment.')
+    parser.add_argument('--name', '-n', type=str, help='name of the experiment.')
     parser.add_argument('--volume_ids', '-vol_ids', type=str, default='samp0,samp1,samp2,samp3,samp4,samp5,samp6,samp7', help='filename(s) of the CT volume(s) comma separated.')
     parser.add_argument('--ct2us_model_name', '-model', type=str, default='CycleGAN_LPIPS_noIdtLoss_lambda_AB_1',
                         help='filename for the state dict of the ct2us model (.pth) file.\navailable models can be found at ./models')
@@ -40,13 +40,14 @@ def gather_options():
                                                                     'This is to prevent them from moving towards the edges of a volume, which are meaningless.')
 
     # training options (general)
-    parser.add_argument('--train', action='store_true', help='if training the agent before testing it.')
     parser.add_argument('--load', type=str, default=None, help='which model to load from.')
     parser.add_argument('--n_episodes', type=int, default=5000, help="number of episodes to train the agents for.")
     parser.add_argument('--n_steps_per_episode', type=int, default=250, help="number of steps in each episode.")
     parser.add_argument('--eps_start', type=float, default=1.0, help="epsilon factor for egreedy policy, starting value.")
     parser.add_argument('--eps_end', type=float, default=0.01, help="epsilon factor for egreedy policy, starting value.")
     parser.add_argument('--stop_eps_decay', type=float, default=0.9, help="after what fraction of episodes we want to have eps = --eps_end.")
+    parser.add_argument('--loss', type=str, default="MSE", help='which loss to use to optimize the Qnetwork (MSE, SmoothL1).')
+    parser.add_argument('--trainer', type=str, default="DeepQLearning", help='which training routine to use (DeepQLearning, DoubleDeepQLearning...).')
 
     # training options (specific)
     parser.add_argument('--batch_size', type=int, default=64, help="batch size for the replay buffer.")
@@ -94,7 +95,7 @@ def print_options(opt, parser):
     if not os.path.exists(expr_dir):
         os.makedirs(expr_dir)
 
-    file_name = os.path.join(expr_dir, '{}_options.txt'.format("train" if opt.train else "test"))
+    file_name = os.path.join(expr_dir, 'options.txt')
     with open(file_name, 'wt') as opt_file:
         opt_file.write(message)
         opt_file.write('\n')

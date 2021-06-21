@@ -28,7 +28,7 @@ class BaseAgent(object):
         # set up the device
         self.device = torch.device('cuda' if config.use_cuda else 'cpu')
         # setup the action size and the number of agents
-        self.n_agents, self.action_size = config.action_size, config.n_agents
+        self.n_agents, self.action_size = config.n_agents, config.action_size
         # setup the qnetworks
         self.qnetwork_local = QNetwork((1, config.load_size, config.load_size), config.action_size, config.n_agents, config.seed, config.n_blocks_Q,
                                        config.downsampling_Q, config.n_features_Q, not config.no_dropout_Q).to(self.device)
@@ -36,11 +36,18 @@ class BaseAgent(object):
                                         config.downsampling_Q, config.n_features_Q, not config.no_dropout_Q).to(self.device)
         # setup the optimizer for the local qnetwork
         self.optimizer = optim.Adam(self.qnetwork_local.parameters(), lr=config.learning_rate)
+        # load from checkpoint if needed
+        if config.load is not None:
+            print("loading: {} ...".format(config.load))
+            self.load(config.load)
         # setup the training loss
         if "mse" in config.loss.lower():
             self.loss = nn.MSELoss()
         elif "smooth" in config.loss.lower():
             self.loss = nn.SmoothL1Loss()
+
+        # formulate a suitable decay factor for epsilon given the queried options.
+        self.EPS_DECAY_FACTOR = (config.eps_end/config.eps_start)**(1/int(config.stop_eps_decay*config.n_episodes))
 
         # save the config for any options we might need
         self.config = config
@@ -57,7 +64,7 @@ class BaseAgent(object):
             slice (np.ndarray of shape (H, W)): 2D slice of anatomy.
         """
         # convert to tensor, normalize and unsqueeze to pass through qnetwork
-        slice = torch.from_numpy(slice/255, device = self.device).float().unsqueeze(0).unsqueeze(0)
+        slice = torch.from_numpy(slice/255).float().unsqueeze(0).unsqueeze(0).to(self.device)
         self.qnetwork_local.eval()
         with torch.no_grad():
             Qs = self.qnetwork_local(slice)
@@ -71,7 +78,7 @@ class BaseAgent(object):
             slice (np.ndarray of shape (H, W)): 2D slice of anatomy.
             eps (float): epsilon parameter governing exploration/exploitation trade-off
         """
-        if random.sample()>eps:
+        if random.random()>eps:
             return self.greedy_action(slice)
         else:
             return self.random_action()
@@ -80,7 +87,11 @@ class BaseAgent(object):
     def learn(self):
         """update the Q network through some routine.
         """
-
+    
+    @abstractmethod
+    def play_episode(self):
+        """Make the agent play a full episode.
+        """
     def train(self):
         raise NotImplementedError()
 

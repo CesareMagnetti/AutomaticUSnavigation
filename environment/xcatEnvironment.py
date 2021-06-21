@@ -166,26 +166,20 @@ class SingleVolumeEnvironment(BaseEnvironment):
         """
         # get the increment corresponding to this action
         increment = np.vstack([self.mapActionToIncrement(act) for act in action])
-
         # step into the next state
         state = self.state
         next_state = state + increment
-
         # observe the next plane and get the reward from segmentation map
-        slice, segmentation = self.sample_plane(state=next_state, return_seg=True)
+        next_slice, segmentation = self.sample_plane(state=next_state, return_seg=True)
         rewards = self.get_reward(segmentation)
-
         # log these rewards to the current episode count
         for r in rewards:
             self.logs[r]+=rewards[r]
-
         # add transition to replay buffer
         self.buffer.add(state, action, sum(rewards.values()), next_state)
-
         # update the current state
         self.state = next_state
-
-        return slice
+        return next_slice
     
     def reset(self):
         # sample a random plane (defined by 3 points) to start the episode from
