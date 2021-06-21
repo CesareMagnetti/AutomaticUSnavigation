@@ -85,11 +85,13 @@ class SingleVolumeAgent(BaseAgent):
         # 3. once we are done exploring launch training
         # LAUNCHES MANY ENVIRONMENTS IN PARALLEL
         if isinstance(env, (list, tuple)):
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                [executor.submit(self.play_episode(e)) for e in env]
+            for _ in tqdm(range(int(self.config.n_episodes/len(env))), desc="training..."):
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    [executor.submit(self.play_episode(e)) for e in env]
         # LAUNCHES A SINGLE ENVIRONMENT SEQUENTIALLY
         else:
-            [self.play_episode(env) for _ in tqdm(range(self.config.n_episodes), desc="training...")]
+            for _ in tqdm(range(self.config.n_episodes), desc="training..."):
+                self.play_episode(env)
                 
         # close wandb
         wandb.finish()
@@ -118,7 +120,7 @@ class SingleVolumeAgent(BaseAgent):
             slice = next_slice
         
         # send logs to wandb and save trajectory
-        wandb.log({log+"_test": r for log,r in env.logs.items()}, step=self.t_step, commit=True)
+        wandb.log({log+"_test": r for log,r in env.logs.items()}, commit=True)
         clip = ImageSequenceClip(slices, fps=10)
         if not os.path.exists(os.path.join(self.results_dir, "visuals")):
             os.makedirs(os.path.join(self.results_dir, "visuals"))
