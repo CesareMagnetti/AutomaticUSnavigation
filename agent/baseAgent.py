@@ -45,6 +45,8 @@ class BaseAgent(object):
             self.loss = nn.MSELoss()
         elif "smooth" in config.loss.lower():
             self.loss = nn.SmoothL1Loss()
+        else:
+            raise ValueError()
 
         # formulate a suitable decay factor for epsilon given the queried options.
         self.EPS_DECAY_FACTOR = (config.eps_end/config.eps_start)**(1/int(config.stop_eps_decay*config.n_episodes))

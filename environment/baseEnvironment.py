@@ -118,7 +118,7 @@ class BaseEnvironment(object):
             trajectory = []
         # start the random walk
         self.reset()
-        for step in tqdm(range(1, n_random_steps+1), desc="random walk..."):
+        for step in range(1, n_random_steps+1):
             # random action
             action = np.vstack([random.choice(np.arange(self.config.action_size)) for _ in range(self.config.n_agents)])
             # step the environment according to this random action (automatically stores (s, a, r ,s') to buffer)

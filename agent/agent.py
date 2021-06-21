@@ -6,6 +6,7 @@ import torch, os, wandb
 from moviepy.editor import ImageSequenceClip
 from tqdm import tqdm
 import concurrent.futures
+import torch.multiprocessing as mp
 
 class SingleVolumeAgent(BaseAgent):
     """Interacts with and learns from a single environment volume."""
@@ -44,25 +45,13 @@ class SingleVolumeAgent(BaseAgent):
                 episode_loss+=self.learn(env.buffer.sample(), env)
             # set slice to next slice
             slice= next_slice
-
-        # send logs to weights and biases
-        if self.episode % self.config.log_freq == 0:
-            logs = env.logs
-            logs["loss"] = episode_loss
-            logs["epsilon"] = self.eps
-            wandb.log(logs, step=self.t_step, commit=True)
-
-        # save agent locally and test its current greedy policy
-        if self.episode % self.config.save_freq == 0:
-            print("saving latest model weights...")
-            self.save()
-            self.save("episode%d.pth"%self.episode)
-            # test current greedy policy
-            self.test(self.config.n_steps_per_episode, env, "episode%d"%self.episode)
-
-        # update eps
-        if self.t_step>self.config.exploring_steps:
-            self.eps = max(self.eps*self.EPS_DECAY_FACTOR, self.config.eps_end)
+        # return episode logs
+        logs = env.logs
+        logs["loss"] = episode_loss
+        logs["epsilon"] = self.eps
+        # decrease eps
+        self.eps = max(self.eps*self.EPS_DECAY_FACTOR, self.config.eps_end)
+        return logs
 
     def train(self, env):
         """ Trains the agent on an input environment.
@@ -78,20 +67,61 @@ class SingleVolumeAgent(BaseAgent):
         # tell wandb to watch what the model gets up to: gradients, weights, and more!
         wandb.watch(self.qnetwork_target, self.loss, log="all", log_freq=self.config.log_freq)
 
-        # 2. launch exploring steps if needed
-        if self.config.exploring_steps>0:
-            env.random_walk(self.config.exploring_steps, self.config.exploring_restarts)
-
-        # 3. once we are done exploring launch training
+        # 2. once we are done exploring launch training
         # LAUNCHES MANY ENVIRONMENTS IN PARALLEL
         if isinstance(env, (list, tuple)):
-            for _ in tqdm(range(int(self.config.n_episodes/len(env))), desc="training..."):
+            # set qnetwork weights in shared mode
+            # self.qnetwork_local.share_memory()
+            # self.qnetwork_target.share_memory()
+            # launch exploring steps if needed
+            if self.config.exploring_steps>0:
+                print("random walk to collect experience...")
+                steps, restarts = int(self.config.exploring_steps/len(env)), int(self.config.exploring_restarts/len(env))
                 with concurrent.futures.ThreadPoolExecutor() as executor:
-                    [executor.submit(self.play_episode(e)) for e in env]
+                    [executor.submit(e.random_walk, steps, restarts) for e in env]
+
+            # start training
+            save_freq, log_freq = max(1, int(self.config.save_freq/len(env))), max(1, int(self.config.log_freq/len(env)))
+            for episode in tqdm(range(int(self.config.n_episodes/len(env))), desc="training..."):
+                
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    futures = [executor.submit(self.play_episode, e) for e in env]
+                # assemble logs (take mean of logs across runs)
+                logs= [f.result() for f in futures]
+                mean_logs = {key: 0 for key in logs[0]}
+                for log in logs:
+                    for key, value in log.items():
+                        mean_logs[key]+=value/len(logs)
+                # send logs to weights and biases
+                if episode % log_freq == 0:
+                    wandb.log(mean_logs, step=self.t_step, commit=True)
+                # save agent locally and test its current greedy policy
+                if episode % save_freq == 0:
+                    print("saving latest model weights...")
+                    self.save()
+                    self.save("episode%d.pth"%episode)
+                    # test current greedy policy
+                    self.test(self.config.n_steps_per_episode, env, "episode%d"%episode)         
         # LAUNCHES A SINGLE ENVIRONMENT SEQUENTIALLY
         else:
-            for _ in tqdm(range(self.config.n_episodes), desc="training..."):
-                self.play_episode(env)     
+            # launch exploring steps if needed
+            if self.config.exploring_steps>0:
+                print("random walk to collect experience...")
+                env.random_walk(self.config.exploring_steps, self.config.exploring_restarts)
+
+            # start training
+            for episode in tqdm(range(self.config.n_episodes), desc="training..."):
+                logs = self.play_episode(env)
+                # send logs to weights and biases
+                if episode % self.config.log_freq == 0:
+                    wandb.log(logs, step=self.t_step, commit=True)
+                # save agent locally and test its current greedy policy
+                if episode % self.config.save_freq == 0:
+                    print("saving latest model weights...")
+                    self.save()
+                    self.save("episode%d.pth"%episode)
+                    # test current greedy policy
+                    self.test(self.config.n_steps_per_episode, env, "episode%d"%episode)           
         # close wandb
         wandb.finish()
 
