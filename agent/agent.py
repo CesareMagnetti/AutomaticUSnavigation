@@ -5,12 +5,9 @@ import numpy as np
 import torch, os, wandb
 from moviepy.editor import ImageSequenceClip
 from tqdm import tqdm
-import concurrent.futures
-import torch.multiprocessing as mp
 
-class SingleVolumeAgent(BaseAgent):
+class Agent(BaseAgent):
     """Interacts with and learns from a single environment volume."""
-
     def __init__(self, config):
         """Initialize an Agent object.
         Params:
@@ -29,7 +26,18 @@ class SingleVolumeAgent(BaseAgent):
         else:
             raise NotImplementedError()
 
-    def play_episode(self, env):
+    def play_episode(self, env, local_model, target_model, optimizer, criterion):
+        """ Plays one episode on an input environment.
+        Params:
+        ==========
+            env (environment/* instance): the environment the agent will interact with while training.
+            local_model (PyTorch model): pytorch network that will be trained using a particular training routine (i.e. DQN)
+            target_model (PyTorch model): pytorch network that will be used as a target to estimate future Qvalues. 
+                                          (it is a hard copy or a running average of the local model, helps against diverging)
+            optimizer (PyTorch optimizer): optimizer to update the local network weights.
+            criterion (PyTorch Module): loss to minimize in order to train the local network.
+        Returns logs (dict): all relevant logs acquired throughout the episode.
+        """  
         self.episode+=1
         episode_loss = 0
         env.reset()
@@ -37,12 +45,12 @@ class SingleVolumeAgent(BaseAgent):
         for _ in range(self.config.n_steps_per_episode):  
             self.t_step+=1
             # get action from current state
-            actions = self.act(slice, self.eps) 
+            actions = self.act(slice, local_model, self.eps) 
             # observe next state (automatically adds (state, action, reward, next_state) to env.buffer) 
             next_slice = env.step(actions)
             # learn every UPDATE_EVERY steps and if enough samples in env.buffer
             if self.t_step % self.config.update_every == 0 and len(env.buffer) > self.config.batch_size:
-                episode_loss+=self.learn(env.buffer.sample(), env)
+                episode_loss+=self.learn(env, local_model, target_model, optimizer, criterion)
             # set slice to next slice
             slice= next_slice
         # return episode logs
@@ -53,86 +61,15 @@ class SingleVolumeAgent(BaseAgent):
         self.eps = max(self.eps*self.EPS_DECAY_FACTOR, self.config.eps_end)
         return logs
 
-    def train(self, env):
-        """ Trains the agent on an input environment.
-        Params:
-        ==========
-            env (environment/* instance OR list[envs]): the environment the agent will interact with while training. 
-                                                        if a list of environments is passed, they will run in parallel.
-        """        
-        # 1. initialize wandb for logging purposes
-        if self.config.wandb in ["online", "offline"]:
-            wandb.login()
-        wandb.init(project="AutomaticUSnavigation", name=self.config.name, config=self.config, mode=self.config.wandb)
-        # tell wandb to watch what the model gets up to: gradients, weights, and more!
-        wandb.watch(self.qnetwork_target, self.loss, log="all", log_freq=self.config.log_freq)
-
-        # 2. once we are done exploring launch training
-        # LAUNCHES MANY ENVIRONMENTS IN PARALLEL
-        if isinstance(env, (list, tuple)):
-            # set qnetwork weights in shared mode
-            # self.qnetwork_local.share_memory()
-            # self.qnetwork_target.share_memory()
-            # launch exploring steps if needed
-            if self.config.exploring_steps>0:
-                print("random walk to collect experience...")
-                steps, restarts = int(self.config.exploring_steps/len(env)), int(self.config.exploring_restarts/len(env))
-                with concurrent.futures.ThreadPoolExecutor() as executor:
-                    [executor.submit(e.random_walk, steps, restarts) for e in env]
-
-            # start training
-            save_freq, log_freq = max(1, int(self.config.save_freq/len(env))), max(1, int(self.config.log_freq/len(env)))
-            for episode in tqdm(range(int(self.config.n_episodes/len(env))), desc="training..."):
-                
-                with concurrent.futures.ThreadPoolExecutor() as executor:
-                    futures = [executor.submit(self.play_episode, e) for e in env]
-                # assemble logs (take mean of logs across runs)
-                logs= [f.result() for f in futures]
-                mean_logs = {key: 0 for key in logs[0]}
-                for log in logs:
-                    for key, value in log.items():
-                        mean_logs[key]+=value/len(logs)
-                # send logs to weights and biases
-                if episode % log_freq == 0:
-                    wandb.log(mean_logs, step=self.t_step, commit=True)
-                # save agent locally and test its current greedy policy
-                if episode % save_freq == 0:
-                    print("saving latest model weights...")
-                    self.save()
-                    self.save("episode%d.pth"%episode)
-                    # test current greedy policy
-                    self.test(self.config.n_steps_per_episode, env, "episode%d"%episode)         
-        # LAUNCHES A SINGLE ENVIRONMENT SEQUENTIALLY
-        else:
-            # launch exploring steps if needed
-            if self.config.exploring_steps>0:
-                print("random walk to collect experience...")
-                env.random_walk(self.config.exploring_steps, self.config.exploring_restarts)
-
-            # start training
-            for episode in tqdm(range(self.config.n_episodes), desc="training..."):
-                logs = self.play_episode(env)
-                # send logs to weights and biases
-                if episode % self.config.log_freq == 0:
-                    wandb.log(logs, step=self.t_step, commit=True)
-                # save agent locally and test its current greedy policy
-                if episode % self.config.save_freq == 0:
-                    print("saving latest model weights...")
-                    self.save()
-                    self.save("episode%d.pth"%episode)
-                    # test current greedy policy
-                    self.test(self.config.n_steps_per_episode, env, "episode%d"%episode)           
-        # close wandb
-        wandb.finish()
-
-    def test(self, steps, env, fname):
+    def test_agent(self, steps, env, local_model, fname="test"):
         """Test the greedy policy learned by the agent, saves the trajectory as a GIF and logs collected reward to wandb.
         Params:
         ==========
             steps (int): number of steps to test the agent for.
             env (environment/* instance): the environment the agent will interact with while testing.
+            local_model (PyTorch model): pytorch network that will be tested.
+            fname (str): name of file to save (default = test)
         """
-
         # reset env to a random initial slice
         env.reset()
         slice = env.sample_plane(env.state)
@@ -142,7 +79,7 @@ class SingleVolumeAgent(BaseAgent):
             # save frame
             slices.append(slice[..., np.newaxis]*np.ones(3))
             # get action from current state
-            actions = self.act(slice)  
+            actions = self.act(slice, local_model)  
             # observe next state (automatically adds (state, action, reward, next_state) to env.buffer) 
             next_slice = env.step(actions)
             # set slice to next slice
@@ -156,34 +93,38 @@ class SingleVolumeAgent(BaseAgent):
         clip.write_gif(os.path.join(self.results_dir, "visuals", fname+".gif"), fps=10)
         wandb.save(os.path.join(self.results_dir, "visuals", fname+".gif"))
     
-    def learn(self, batch, env):
-        """Update value parameters using given batch of experience tuples.
-        Params
-        ======
-            batch (Tuple[torch.Tensor]): tuple of (s, a, r, s') tuples 
-            env (environment/* object): environment the agent is using to learn a good policy
-        """
+    def learn(self, env, local_model, target_model, optimizer, criterion):
+        """ Update value parameters using given batch of experience tuples.
+        Params:
+        ==========
+            env (environment/* instance): the environment the agent will interact with while training.
+            local_model (PyTorch model): pytorch network that will be trained using a particular training routine (i.e. DQN)
+            target_model (PyTorch model): pytorch network that will be used as a target to estimate future Qvalues. 
+                                          (it is a hard copy or a running average of the local model, helps against diverging)
+            optimizer (PyTorch optimizer): optimizer to update the local network weights.
+            criterion (PyTorch Module): loss to minimize in order to train the local network.
+        """  
         # 1. organize batch
-        states, actions, rewards, next_states = batch
+        states, actions, rewards, next_states = env.buffer.sample()
         planes = env.sample_planes(states+next_states, process=True)
         # concatenate and move to gpu
-        states = torch.from_numpy(np.vstack(planes[:self.config.batch_size])).float().to(self.device)
-        next_states = torch.from_numpy(np.vstack(planes[self.config.batch_size:])).float().to(self.device)
-        rewards = torch.tensor(rewards).repeat(self.n_agents).float().to(self.device) # repeat for n_agents that share this reward
-        actions = torch.from_numpy(np.hstack(actions)).flatten().unsqueeze(0).long().to(self.device) # unroll for each agent one by one
+        states = torch.from_numpy(np.vstack(planes[:self.config.batch_size])).float().to(self.config.device)
+        next_states = torch.from_numpy(np.vstack(planes[self.config.batch_size:])).float().to(self.config.device)
+        rewards = torch.tensor(rewards).repeat(self.n_agents).float().to(self.config.device) # repeat for n_agents that share this reward
+        actions = torch.from_numpy(np.hstack(actions)).flatten().unsqueeze(0).long().to(self.config.device) # unroll for each agent one by one
         batch = (states, actions, rewards, next_states)
 
         # 2. make a training step (retain graph because we will backprop multiple times through the backbone cnn)
-        self.optimizer.zero_grad()
-        loss = self.trainer.step(batch, self.qnetwork_local, self.qnetwork_target, self.loss)
+        optimizer.zero_grad()
+        loss = self.trainer.step(batch, local_model, target_model, criterion)
         loss.backward(retain_graph=True)
-        self.optimizer.step()
+        optimizer.step()
 
         # 3. update target network
         if self.config.target_update == "soft":
-            self.soft_update(self.qnetwork_local, self.qnetwork_target, self.config.tau)   
+            self.soft_update(local_model, target_model, self.config.tau)   
         elif self.config.target_update == "hard":
-            self.hard_update(self.qnetwork_local, self.qnetwork_target, self.config.delay_steps)
+            self.hard_update(local_model, target_model, self.config.delay_steps)
         else:
             raise ValueError('unknown ``self.target_update``: {}. possible options: [hard, soft]'.format(self.config.target_update))   
 

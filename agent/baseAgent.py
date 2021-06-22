@@ -1,9 +1,6 @@
 
-from agent.Qnetworks import SimpleQNetwork as QNetwork
 import torch, os, six, random
 import numpy as np
-import torch.nn as nn
-import torch.optim as optim
 from abc import abstractmethod, ABCMeta
 
 @six.add_metaclass(ABCMeta)
@@ -25,32 +22,10 @@ class BaseAgent(object):
             os.makedirs(self.checkpoints_dir)
         if not os.path.exists(self.results_dir):
             os.makedirs(self.results_dir)
-        # set up the device
-        self.device = torch.device('cuda' if config.use_cuda else 'cpu')
         # setup the action size and the number of agents
         self.n_agents, self.action_size = config.n_agents, config.action_size
-        # setup the qnetworks
-        self.qnetwork_local = QNetwork((1, config.load_size, config.load_size), config.action_size, config.n_agents, config.seed, config.n_blocks_Q,
-                                       config.downsampling_Q, config.n_features_Q, not config.no_dropout_Q).to(self.device)
-        self.qnetwork_target = QNetwork((1, config.load_size, config.load_size), config.action_size, config.n_agents, config.seed, config.n_blocks_Q,
-                                        config.downsampling_Q, config.n_features_Q, not config.no_dropout_Q).to(self.device)
-        # setup the optimizer for the local qnetwork
-        self.optimizer = optim.Adam(self.qnetwork_local.parameters(), lr=config.learning_rate)
-        # load from checkpoint if needed
-        if config.load is not None:
-            print("loading: {} ...".format(config.load))
-            self.load(config.load)
-        # setup the training loss
-        if "mse" in config.loss.lower():
-            self.loss = nn.MSELoss()
-        elif "smooth" in config.loss.lower():
-            self.loss = nn.SmoothL1Loss()
-        else:
-            raise ValueError()
-
         # formulate a suitable decay factor for epsilon given the queried options.
         self.EPS_DECAY_FACTOR = (config.eps_end/config.eps_start)**(1/int(config.stop_eps_decay*config.n_episodes))
-
         # save the config for any options we might need
         self.config = config
     
@@ -59,29 +34,34 @@ class BaseAgent(object):
         """
         return np.vstack([random.choice(np.arange(self.action_size)) for _ in range(self.n_agents)])
     
-    def greedy_action(self, slice):
+    def greedy_action(self, slice, local_model):
         """Returns the discrete actions for which the Q values of each agent are maximized, stacked vertically.
         Params:
         ==========
             slice (np.ndarray of shape (H, W)): 2D slice of anatomy.
+            local_model (PyTorch model): takes input the slice and outputs action values.
+
+        returns:
+            np.ndarray (contains an action for each agent)
         """
         # convert to tensor, normalize and unsqueeze to pass through qnetwork
-        slice = torch.from_numpy(slice/255).float().unsqueeze(0).unsqueeze(0).to(self.device)
-        self.qnetwork_local.eval()
+        slice = torch.from_numpy(slice/255).float().unsqueeze(0).unsqueeze(0).to(self.config.device)
+        local_model.eval()
         with torch.no_grad():
-            Qs = self.qnetwork_local(slice)
-        self.qnetwork_local.train()
+            Qs = local_model(slice)
+        local_model.train()
         return np.vstack([torch.argmax(Q, dim=1).item() for Q in Qs])
 
-    def act(self, slice, eps=0.):
+    def act(self, slice, local_model, eps=0.):
         """Generate an action given some input.
         Params:
         ==========
             slice (np.ndarray of shape (H, W)): 2D slice of anatomy.
+            local_model (PyTorch model): takes input the slice and outputs action values
             eps (float): epsilon parameter governing exploration/exploitation trade-off
         """
         if random.random()>eps:
-            return self.greedy_action(slice)
+            return self.greedy_action(slice, local_model)
         else:
             return self.random_action()
     
@@ -121,15 +101,3 @@ class BaseAgent(object):
         if self.t_step % N == 0:
             for target_param, local_param in zip(target_model.parameters(), local_model.parameters()):
                 target_param.data.copy_(local_param.data)
-
-    def save(self, fname="latest.pth"):
-        print("saving: {}".format(os.path.join(self.checkpoints_dir, fname)))
-        torch.save(self.qnetwork_target.state_dict(), os.path.join(self.checkpoints_dir, fname))
-
-    def load(self, name):
-        if not ".pth" in name:
-            name+=".pth"
-        print("loading: {}".format(os.path.join(self.checkpoints_dir, name)))
-        state_dict = torch.load(os.path.join(self.checkpoints_dir, name))
-        self.qnetwork_local.load_state_dict(state_dict)
-        self.qnetwork_target.load_state_dict(state_dict)

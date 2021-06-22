@@ -28,8 +28,6 @@ class BaseEnvironment(object):
             os.makedirs(self.checkpoints_dir)
         if not os.path.exists(self.results_dir):
             os.makedirs(self.results_dir)
-        # set up the device
-        self.device = torch.device('cuda' if config.use_cuda else 'cpu')
         # set up the replay buffer
         self.buffer = ReplayBuffer(config.buffer_size, config.batch_size)
         # save the config for any options we might need

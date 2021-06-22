@@ -2,7 +2,6 @@ from environment.baseEnvironment import BaseEnvironment
 import numpy as np
 import SimpleITK as sitk
 import os
-import torch
 
 def get_traingle_area(a, b, c) :
     return 0.5 * np.linalg.norm( np.cross( b-a, c-a ) )
