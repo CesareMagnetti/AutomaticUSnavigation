@@ -43,3 +43,49 @@ class DeepQLearning():
         loss = criterion(Q, Qhat)
         #print("loss: ", loss.shape)
         return loss
+
+class DoubleDeepQLearning():
+    def __init__(self, gamma):
+        """Initializes the trainer class
+        Params:
+        ==========
+            gamma (float): discount factor for dqn.
+        """
+        # batch size and discount factor
+        self.gamma = gamma
+
+    def step(self, batch, local_model, target_model, criterion):
+        """Update qbetwork parameters using given batch of experience tuples.
+        Params
+        ======
+            batch (Tuple[torch.Tensor]): tuple of (s, a, r, s') tuples
+            local_model (PyTorch model): local Q network (the one we update)
+            target_model (PyTorch model): target Q network (the one we use to bootstrap future Q values)
+            criterion (torch.nn.Module): the loss we use to update the network parameters    
+        """
+        # 1. split batch
+        states, actions, rewards, next_states = batch
+        #print("training batch")
+        #print(states.shape, actions.shape, rewards.shape, next_states.shape)
+
+        # 2. get our value estimates Q for the current state, and our target values estimates (Qtarget) for the next state
+        # note that the qnetworks have multiple heads, returned as a list, concatenate them
+        # so that the shape is (n_agents*batch_size) X action_size
+        Q = torch.cat(local_model(states), dim=0) 
+        Q_next = torch.cat(local_model(next_states), dim=0)
+        Qtarget_next = torch.cat(target_model(next_states), dim=0)
+        #print("Q, Q_next and Qtarget_next:", Q.shape, Q_next.shape, Qtarget_next.shape)
+        # 3. gather Q values for the actions taken at the current state
+        Qa = Q.gather(1, actions).squeeze()
+        #print("gathered Q values: ", Qa.shape)
+        # 4. get the discrete action that maximizes the target value at the next state
+        a_next = Qtarget_next.max(1)[1].unsqueeze(0)
+        Qa_next = Q_next.gather(1, a_next).detach().squeeze()
+        #print("estimated target values: ", Qa_next.shape)
+        # 5. backup the expected value of this action by bootstrapping on the greedy value of the next state
+        Qhat = rewards + self.gamma*Qa_next
+        #print("rewards + self.gamma*Qa_next: ", rewards.shape, Qa_next.shape, Qhat.shape)
+        # evalauate TD error as a fit function for the netwrok
+        loss = criterion(Qa, Qhat)
+        #print("loss: ", loss.shape)
+        return loss

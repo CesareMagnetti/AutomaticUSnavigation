@@ -1,6 +1,6 @@
 
 from agent.baseAgent import BaseAgent
-from agent.trainers import DeepQLearning
+from agent.trainers import DeepQLearning, DoubleDeepQLearning
 import numpy as np
 import torch, os, wandb
 from moviepy.editor import ImageSequenceClip
@@ -23,6 +23,8 @@ class Agent(BaseAgent):
         # set the trainer algorithm
         if config.trainer.lower() in ["deepqlearning", "qlearning", "dqn"]:
             self.trainer = DeepQLearning(gamma=config.gamma)
+        elif config.trainer.lower() in ["doubledeepqlearning", "doubleqlearning", "doubledqn", "ddqn"]:
+            self.trainer = DoubleDeepQLearning(gamma=config.gamma)
         else:
             raise NotImplementedError()
 

@@ -182,17 +182,31 @@ class SingleVolumeEnvironment(BaseEnvironment):
     
     def reset(self):
         # sample a random plane (defined by 3 points) to start the episode from
-        pointA = np.array([np.random.uniform(low=0., high=1)*self.sx,
-                        0,
-                        np.random.uniform(low=0., high=1.)*self.sz])
+        if self.config.easy_objective:
+            # these planes correspond more or less to a 4-chamber view
+            pointA = np.array([np.random.uniform(low=0.85, high=1)*self.sx,
+                            0,
+                            np.random.uniform(low=0.7, high=0.92)*self.sz])
 
-        pointB = np.array([np.random.uniform(low=0., high=1.)*self.sx,
-                        self.sy,
-                        np.random.uniform(low=0., high=1.)*self.sz])
+            pointB = np.array([np.random.uniform(low=0.3, high=0.43)*self.sx,
+                            self.sy,
+                            0])
 
-        pointC = np.array([np.random.uniform(low=0., high=1.)*self.sx,
-                        self.sy,
-                        np.random.uniform(low=0., high=1.)*self.sz])             
+            pointC = np.array([np.random.uniform(low=0.3, high=0.43)*self.sx,
+                            self.sy,
+                            self.sz]) 
+        else:
+            pointA = np.array([np.random.uniform(low=0., high=1)*self.sx,
+                            0,
+                            np.random.uniform(low=0., high=1.)*self.sz])
+
+            pointB = np.array([np.random.uniform(low=0., high=1.)*self.sx,
+                            self.sy,
+                            np.random.uniform(low=0., high=1.)*self.sz])
+
+            pointC = np.array([np.random.uniform(low=0., high=1.)*self.sx,
+                            self.sy,
+                            np.random.uniform(low=0., high=1.)*self.sz])             
         # stack points to define the state
         self.state = np.vstack([pointA, pointB, pointC])
 

@@ -40,6 +40,7 @@ def gather_options():
                                                                     'This is to prevent them from moving towards the edges of a volume, which are meaningless.')
 
     # training options (general)
+    parser.add_argument('--easy_objective', action='store_true', help="starts the agent in a plane that should be close to a 4-chamber view.")
     parser.add_argument('--load', type=str, default=None, help='which model to load from.')
     parser.add_argument('--n_episodes', type=int, default=2000, help="number of episodes to train the agents for.")
     parser.add_argument('--n_steps_per_episode', type=int, default=250, help="number of steps in each episode.")
@@ -60,7 +61,7 @@ def gather_options():
     parser.add_argument('--exploring_steps', type=int, default=50000, help="number of purely exploring steps at the beginning.")
     parser.add_argument('--exploring_restarts', type=int, default=0, help="number of random restarts for the exploring steps.")
     parser.add_argument('--target_update', type=str, default="hard", help="hard or soft update for target network. If hard specify --delay_steps. If soft specify --tau.")
-    parser.add_argument('--tau', type=int, default=1e-3, help="weight for soft update of target parameters.")
+    parser.add_argument('--tau', type=int, default=1e-2, help="weight for soft update of target parameters.")
     parser.add_argument('--delay_steps', type=int, default=10000, help="delay with which a hard update of the target network is conducted.")
 
     # preprocessing
