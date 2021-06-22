@@ -20,17 +20,17 @@ def train_agent(agent, env, local_model, target_model, optimizer, criterion, ran
                 rank (int): indicates the process number if multiple processes are queried
         """ 
         # manual seed
-        torch.manual_seed(agent.config.seed + rank)   
-        # 1. initialize wandb for logging purposes
-        if agent.config.wandb in ["online", "offline"]:
-                wandb.login()
-        wandb.init(project="AutomaticUSnavigation", group=agent.config.name, config=agent.config, mode=agent.config.wandb)
-        # 2. tell wandb to watch what the model gets up to: gradients, weights, and loss
-        wandb.watch(local_model, criterion, log="all", log_freq=agent.config.log_freq)
-        # 3. launch exploring steps if needed
+        torch.manual_seed(agent.config.seed + rank) 
+        # 1. launch exploring steps if needed
         if agent.config.exploring_steps>0:
                 print("random walk to collect experience...")
-                env.random_walk(agent.config.exploring_steps, agent.config.exploring_restarts)
+                env.random_walk(agent.config.exploring_steps, agent.config.exploring_restarts)  
+        # 2. initialize wandb for logging purposes
+        if agent.config.wandb in ["online", "offline"]:
+                wandb.login()
+        wandb.init(project="AutomaticUSnavigation", name=agent.config.name, group=agent.config.name, config=agent.config, mode=agent.config.wandb)
+        # 3. tell wandb to watch what the model gets up to: gradients, weights, and loss
+        wandb.watch(local_model, criterion, log="all", log_freq=agent.config.log_freq)
         # 4. start training
         for episode in tqdm(range(agent.config.n_episodes), desc="training..."):
                 logs = agent.play_episode(env, local_model, target_model, optimizer, criterion)
@@ -68,15 +68,19 @@ if __name__=="__main__":
         # 4. instanciate Qnetworks, optimizer and training criterion
         qnetwork_local, qnetwork_target, optimizer, criterion = setup_networks(config)
         qnetwork_local.share_memory() # gradients are allocated lazily, so they are not shared here, necessary to train on multiple processes
-        # 5. run multi-threaded training
+        # 5. launch training
+        # MULTI-PROCESS TRAINING
         torch.manual_seed(config.seed)
-        mp.set_start_method('spawn')
-        processes = []
-        for rank in range(config.n_processes):
-                p = mp.Process(target=train_agent, args=(env, qnetwork_local, qnetwork_target, optimizer, criterion, rank))
-                # We first train the model across `num_processes` processes
-                p.start()
-                processes.append(p)
-        for p in processes:
-                p.join()
+        if config.n_processes>1:
+                mp.set_start_method('spawn')
+                processes = []
+                for rank in range(config.n_processes):
+                        p = mp.Process(target=train_agent, args=(agent, env, qnetwork_local, qnetwork_target, optimizer, criterion, rank))
+                        p.start()
+                        processes.append(p)
+                for p in processes:
+                        p.join()
+        # SINGLE PROCESS TRAINING
+        else:
+                train_agent(agent, env, qnetwork_local, qnetwork_target, optimizer, criterion)
 

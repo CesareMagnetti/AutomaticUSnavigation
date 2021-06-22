@@ -27,7 +27,7 @@ def gather_options():
     parser.add_argument('--n_blocks_Q', type=int, default=6, help="number of convolutional blocks in the Qnetwork.")
     parser.add_argument('--downsampling_Q', type=int, default=2, help="downsampling factor of each convolutional layer of the Qnetwork.")
     parser.add_argument('--n_features_Q', type=int, default=4, help="number of features in the first convolutional layer of the Qnetwork.")
-    parser.add_argument('--no_dropout_Q', action='store_true', help="to not use dropout in the Qnetwork (p=0.5 after conv layers and p=0.1 after linear layers).")
+    parser.add_argument('--dropout_Q', action='store_true', help="if use dropout in the Qnetwork (p=0.5 after conv layers and p=0.1 after linear layers).")
 
     # agent specs
     parser.add_argument('--action_size', type=int, default=6, help="how many action can a single agent perform.\n(i.e. up/down,left/right,forward/backwards = 6 in a 3D volume).")
@@ -41,7 +41,7 @@ def gather_options():
 
     # training options (general)
     parser.add_argument('--load', type=str, default=None, help='which model to load from.')
-    parser.add_argument('--n_episodes', type=int, default=5000, help="number of episodes to train the agents for.")
+    parser.add_argument('--n_episodes', type=int, default=2000, help="number of episodes to train the agents for.")
     parser.add_argument('--n_steps_per_episode', type=int, default=250, help="number of steps in each episode.")
     parser.add_argument('--eps_start', type=float, default=1.0, help="epsilon factor for egreedy policy, starting value.")
     parser.add_argument('--eps_end', type=float, default=0.01, help="epsilon factor for egreedy policy, starting value.")
@@ -56,12 +56,12 @@ def gather_options():
     parser.add_argument('--buffer_size', type=int, default=500000, help="capacity of the replay buffer.")
     parser.add_argument('--gamma', type=int, default=0.99, help="discount factor.")
     parser.add_argument('--learning_rate', '-lr', type=float, default=0.0002, help="learning rate for the q network.")
-    parser.add_argument('--update_every', type=int, default=1, help="how often to update the network, in steps.")
+    parser.add_argument('--update_every', type=int, default=10, help="how often to update the network, in steps.")
     parser.add_argument('--exploring_steps', type=int, default=50000, help="number of purely exploring steps at the beginning.")
     parser.add_argument('--exploring_restarts', type=int, default=0, help="number of random restarts for the exploring steps.")
     parser.add_argument('--target_update', type=str, default="hard", help="hard or soft update for target network. If hard specify --delay_steps. If soft specify --tau.")
     parser.add_argument('--tau', type=int, default=1e-3, help="weight for soft update of target parameters.")
-    parser.add_argument('--delay_steps', type=int, default=5000, help="delay with which a hard update of the target network is conducted.")
+    parser.add_argument('--delay_steps', type=int, default=10000, help="delay with which a hard update of the target network is conducted.")
 
     # preprocessing
     parser.add_argument('--load_size', type=int, default=256, help="resolution to load the data. By default 256 isotropic resolution.")
