@@ -48,7 +48,7 @@ def train_agent(agent, env, local_model, target_model, optimizer, criterion, ran
 if __name__=="__main__":
 
         # 1. gather options
-        parser = gather_options()
+        parser = gather_options(phase="train")
         config = parser.parse_args()
         config.use_cuda = torch.cuda.is_available()
         config.device = torch.device("cuda" if config.use_cuda else "cpu")

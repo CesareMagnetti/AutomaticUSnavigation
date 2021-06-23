@@ -3,7 +3,8 @@ import torch
 import os
 
 # parsing arguments
-def gather_options():
+def gather_options(phase="train"):
+
     parser = argparse.ArgumentParser(description='train/test scripts to launch navigation experiments.')
     # I/O directories and data
     parser.add_argument('--dataroot', '-r',  type=str, help='path to the XCAT CT volumes.')
@@ -13,15 +14,15 @@ def gather_options():
                         help='filename for the state dict of the ct2us model (.pth) file.\navailable models can be found at ./models')
     parser.add_argument('--results_dir', type=str, default='./results/', help='where to save the trajectory.')
     parser.add_argument('--checkpoints_dir', type=str, default='./checkpoints/', help='where to save the trajectory.')
+    parser.add_argument('--load', type=str, default=None, help='which model to load from.')
 
-    # logs and checkpointing 
-    parser.add_argument('--wandb', type=str, default='online', help='handles weights and biases interface.\n'\
-                                                                'online: launches online interface.\n'\
-                                                                'offline: writes all data to disk for later syncing to a server\n'\
-                                                                'disabled: completely shuts off wandb. (default = online)')
-    parser.add_argument('--save_freq', type=int, default=100, help="save Qnetworks every n episodes. Also tests the agent greedily for logs.")
-    parser.add_argument('--log_freq', type=int, default=10, help="frequency (in episodes) with wich we store logs to weights and biases.") 
-    parser.add_argument('--timer', action='store_true', help='saves all relevant time logs.')
+    # preprocessing
+    parser.add_argument('--load_size', type=int, default=256, help="resolution to load the data. By default 256 isotropic resolution.")
+    parser.add_argument('--no_preprocess', action='store_true', help="If you do not want to preprocess the CT volume. (set to uint8 and scale intensities)")
+    parser.add_argument('--pmin', type=int, default=150, help="pmin value for xcatEnvironment/intensity_scaling() function.")
+    parser.add_argument('--pmax', type=int, default=200, help="pmax value for xcatEnvironment/intensity_scaling() function.")
+    parser.add_argument('--nmin', type=int, default=0, help="nmin value for xcatEnvironment/intensity_scaling() function.")
+    parser.add_argument('--nmax', type=int, default=255, help="nmax value for xcatEnvironment/intensity_scaling() function.")
 
     # Qnetwork specs  
     parser.add_argument('--n_blocks_Q', type=int, default=6, help="number of convolutional blocks in the Qnetwork.")
@@ -39,9 +40,14 @@ def gather_options():
     parser.add_argument('--area_penalty_weight', type=float, default=0.1, help='how much to incentivize the agents to maximize the area of the triangle they span.\n'\
                                                                     'This is to prevent them from moving towards the edges of a volume, which are meaningless.')
 
-    # training options (general)
+    # random seed for reproducibility
+    parser.add_argument('--seed', type=int, default=1, help="random seed for reproducibility.")
+    # multi-processing
+    parser.add_argument('--n_processes', type=int, default=1, help="number of processes to launch together.")
+    # flag for easier objective
     parser.add_argument('--easy_objective', action='store_true', help="starts the agent in a plane that should be close to a 4-chamber view.")
-    parser.add_argument('--load', type=str, default=None, help='which model to load from.')
+
+    # training options (general)
     parser.add_argument('--n_episodes', type=int, default=2000, help="number of episodes to train the agents for.")
     parser.add_argument('--n_steps_per_episode', type=int, default=250, help="number of steps in each episode.")
     parser.add_argument('--eps_start', type=float, default=1.0, help="epsilon factor for egreedy policy, starting value.")
@@ -49,8 +55,6 @@ def gather_options():
     parser.add_argument('--stop_eps_decay', type=float, default=0.9, help="after what fraction of episodes we want to have eps = --eps_end.")
     parser.add_argument('--loss', type=str, default="MSE", help='which loss to use to optimize the Qnetwork (MSE, SmoothL1).')
     parser.add_argument('--trainer', type=str, default="DeepQLearning", help='which training routine to use (DeepQLearning, DoubleDeepQLearning...).')
-    parser.add_argument('--n_processes', type=int, default=1, help="number of processes to launch together, if more volumes are passed in --volume_ids then those are launched in parallel and ``n_processes == len(volume_ids.split(','))``.")
-
 
     # training options (specific)
     parser.add_argument('--batch_size', type=int, default=64, help="batch size for the replay buffer.")
@@ -64,17 +68,24 @@ def gather_options():
     parser.add_argument('--tau', type=int, default=1e-2, help="weight for soft update of target parameters.")
     parser.add_argument('--delay_steps', type=int, default=10000, help="delay with which a hard update of the target network is conducted.")
 
-    # preprocessing
-    parser.add_argument('--load_size', type=int, default=256, help="resolution to load the data. By default 256 isotropic resolution.")
-    parser.add_argument('--no_preprocess', action='store_true', help="If you do not want to preprocess the CT volume. (set to uint8 and scale intensities)")
-    parser.add_argument('--pmin', type=int, default=150, help="pmin value for xcatEnvironment/intensity_scaling() function.")
-    parser.add_argument('--pmax', type=int, default=200, help="pmax value for xcatEnvironment/intensity_scaling() function.")
-    parser.add_argument('--nmin', type=int, default=0, help="nmin value for xcatEnvironment/intensity_scaling() function.")
-    parser.add_argument('--nmax', type=int, default=255, help="nmax value for xcatEnvironment/intensity_scaling() function.")
+    if phase == "train":
+        parser.add_argument('--train', action='store_true', default=True, help="training flag set to true.")
+        # logs and checkpointing 
+        parser.add_argument('--wandb', type=str, default='online', help='handles weights and biases interface.\n'\
+                                                                    'online: launches online interface.\n'\
+                                                                    'offline: writes all data to disk for later syncing to a server\n'\
+                                                                    'disabled: completely shuts off wandb. (default = online)')
+        parser.add_argument('--save_freq', type=int, default=100, help="save Qnetworks every n episodes. Also tests the agent greedily for logs.")
+        parser.add_argument('--log_freq', type=int, default=10, help="frequency (in episodes) with wich we store logs to weights and biases.") 
+        parser.add_argument('--timer', action='store_true', help='saves all relevant time logs.')
 
-    # random seed for reproducibility
-    parser.add_argument('--seed', type=int, default=1, help="random seed for reproducibility.")
-
+    elif phase=="test":
+        parser.add_argument('--train', action='store_true', default=False, help="training flag set to False.")
+        parser.add_argument('--n_runs', type=int, default=5, help="number of test runs to do")
+        parser.add_argument('--n_steps', type=int, default=250, help="number of steps to test the agent for.")
+    else:
+        raise ValueError('unknown parameter phase: {}. expected: ("train"/"test").'.format(phase))
+        
     return parser
 
 def print_options(opt, parser):
@@ -98,7 +109,11 @@ def print_options(opt, parser):
     if not os.path.exists(expr_dir):
         os.makedirs(expr_dir)
 
-    file_name = os.path.join(expr_dir, 'options.txt')
+    if opt.train:
+        file_name = os.path.join(expr_dir, 'train_options.txt')
+    else:
+        file_name = os.path.join(expr_dir, 'test_options.txt')
+
     with open(file_name, 'wt') as opt_file:
         opt_file.write(message)
         opt_file.write('\n')

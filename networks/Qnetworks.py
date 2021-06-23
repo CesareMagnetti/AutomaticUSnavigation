@@ -27,6 +27,9 @@ def setup_networks(config):
         raise ValueError()
     return qnetwork_local, qnetwork_target, optimizer, criterion
 
+
+# ===== BUILDING BLOCKS =====
+
 class ConvBlock(nn.Module):
     def __init__(self, inChannels, outChannels, kernel_size, stride, padding, dropout):
         super(ConvBlock, self).__init__()
@@ -54,7 +57,8 @@ class HeadBlock(nn.Module):
     def forward(self, x):
         return self.block(x)
 
-# build the DQN network
+# ===== DQN NETWORK =====
+
 class SimpleQNetwork(nn.Module):
     """
     very simple CNN backbone followed by N heads, one for each agent.
