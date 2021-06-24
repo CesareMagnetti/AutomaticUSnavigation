@@ -114,8 +114,8 @@ class Agent(BaseAgent):
         # concatenate and move to gpu
         states = torch.from_numpy(np.vstack(planes[:self.config.batch_size])).float().to(self.config.device)
         next_states = torch.from_numpy(np.vstack(planes[self.config.batch_size:])).float().to(self.config.device)
-        rewards = torch.tensor(rewards).repeat(self.n_agents).float().to(self.config.device) # repeat for n_agents that share this reward
-        actions = torch.from_numpy(np.hstack(actions)).flatten().unsqueeze(0).long().to(self.config.device) # unroll for each agent one by one
+        rewards = torch.tensor(rewards).float().to(self.config.device)
+        actions = torch.from_numpy(np.hstack(actions)).unsqueeze(-1).long().to(self.config.device)
         batch = (states, actions, rewards, next_states)
 
         # 2. make a training step (retain graph because we will backprop multiple times through the backbone cnn)
