@@ -1,3 +1,17 @@
+""" Timer class to help debugging and instecting performance bottlenecks, instantiate this class at the start of your code as:
+
+     timer = Timer()
+
+Just add context managers throughout your code (do not need to restanciate between files, logs are shared between all class instances):
+
+    with Timer("name"):
+        your code here
+
+At the end of your experiment call:
+
+    Timer.save(path/to/savefile)
+"""
+
 import time
 import numpy as np
 import os 
