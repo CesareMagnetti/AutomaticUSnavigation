@@ -18,28 +18,27 @@ def test(runs, steps, agent, env, model, fname="test"):
         model (PyTorch model): pytorch network that will be tested.
         fname (str): name of file to save (default = test)
     """
-
-    slices = {run: [] for run in range(runs)}
+    slices = []
     # test runs and collect frames
     for run in tqdm(range(runs), desc="testing..."):
         # reset env to a random initial slice
         env.reset()
         slice = env.sample_plane(env.state)
+        temp_slices = []
         for _ in range(1, steps+1):  
             # save frame
-            slices[run].append(slice[..., np.newaxis]*np.ones(3))
+            temp_slices.append(slice[..., np.newaxis]*np.ones(3))
             # get action from current state
             actions = agent.act(slice, model)  
             # observe next state (automatically adds (state, action, reward, next_state) to env.buffer) 
             next_slice = env.step(actions)
             # set slice to next slice
             slice = next_slice
+        slices.append(np.array(temp_slices)) #shape: stepsx256x256x3
     
     # concatenate frames and render GIF
-    frames = []
-    for frames in zip(slices):
-        new_frame = np.hstack(frames) 
-        frames.append(new_frame)
+    slices = np.concatenate(slices, axis=2) #shape: stepsx256x(256*runs)x3
+    slices = [slice for slice in slices] # list of len = steps, each frame of shape 256x(256*runs)x3
     clip = ImageSequenceClip(slices, fps=10)
     clip.write_gif(os.path.join(agent.results_dir, fname+".gif"), fps=10)
     

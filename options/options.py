@@ -24,7 +24,8 @@ def gather_options(phase="train"):
     parser.add_argument('--nmin', type=int, default=0, help="nmin value for xcatEnvironment/intensity_scaling() function.")
     parser.add_argument('--nmax', type=int, default=255, help="nmax value for xcatEnvironment/intensity_scaling() function.")
 
-    # Qnetwork specs  
+    # Qnetwork specs
+    parser.add_argument('--default_Q', type=str, default=None, help="give a standard architecure: small -> 3 blocks with stride 4. large -> 6 blocks with stride 2.")
     parser.add_argument('--n_blocks_Q', type=int, default=6, help="number of convolutional blocks in the Qnetwork.")
     parser.add_argument('--downsampling_Q', type=int, default=2, help="downsampling factor of each convolutional layer of the Qnetwork.")
     parser.add_argument('--n_features_Q', type=int, default=4, help="number of features in the first convolutional layer of the Qnetwork.")
@@ -54,7 +55,7 @@ def gather_options(phase="train"):
     parser.add_argument('--eps_end', type=float, default=0.005, help="epsilon factor for egreedy policy, starting value.")
     parser.add_argument('--stop_eps_decay', type=float, default=0.9, help="after what fraction of episodes we want to have eps = --eps_end.")
     parser.add_argument('--loss', type=str, default="MSE", help='which loss to use to optimize the Qnetwork (MSE, SmoothL1).')
-    parser.add_argument('--trainer', type=str, default="DeepQLearning", help='which training routine to use (DeepQLearning, DoubleDeepQLearning...).')
+    parser.add_argument('--trainer', type=str, default="DoubleDeepQLearning", help='which training routine to use (DeepQLearning, DoubleDeepQLearning...).')
 
     # training options (specific)
     parser.add_argument('--batch_size', type=int, default=64, help="batch size for the replay buffer.")
@@ -65,7 +66,7 @@ def gather_options(phase="train"):
     parser.add_argument('--exploring_steps', type=int, default=50000, help="number of purely exploring steps at the beginning.")
     parser.add_argument('--exploring_restarts', type=int, default=200, help="number of random restarts for the exploring steps.")
     parser.add_argument('--target_update', type=str, default="hard", help="hard or soft update for target network. If hard specify --delay_steps. If soft specify --tau.")
-    parser.add_argument('--tau', type=int, default=1e-2, help="weight for soft update of target parameters.")
+    parser.add_argument('--tau', type=int, default=1e-3, help="weight for soft update of target parameters.")
     parser.add_argument('--delay_steps', type=int, default=10000, help="delay with which a hard update of the target network is conducted.")
 
     if phase == "train":

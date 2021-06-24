@@ -40,6 +40,7 @@ def train(config, local_model, target_model, rank=0):
                 raise ValueError()
         # 5. instanciate replay buffer
         buffer = ReplayBuffer(config.buffer_size, config.batch_size)
+        
         # ==== LAUNCH TRAINING ====
 
         # 1. launch exploring steps if needed
@@ -49,7 +50,10 @@ def train(config, local_model, target_model, rank=0):
         # 2. initialize wandb for logging purposes
         if config.wandb in ["online", "offline"]:
                 wandb.login()
-        wandb.init(project="AutomaticUSnavigation", name=config.name, group=config.name, config=config, mode=config.wandb)
+        ## uncomment this when not performing a sweep and comment the next line.
+        #wandb.init(project="AutomaticUSnavigation", name=config.name, group=config.name, config=config, mode=config.wandb)
+        wandb.init(config=config, entity="cesare-magnetti", project="AutomaticUSnavigation")
+        config = wandb.config # oddly this ensures wandb works smoothly
         # 3. tell wandb to watch what the model gets up to: gradients, weights, and loss
         wandb.watch(local_model, criterion, log="all", log_freq=config.log_freq)
         # 4. start training
@@ -58,14 +62,16 @@ def train(config, local_model, target_model, rank=0):
                 # send logs to weights and biases
                 if episode % config.log_freq == 0:
                         wandb.log(logs, step=agent.t_step, commit=True)
+                        # test the greedy policy and automatically send logs
+                        slices = agent.test_agent(config.n_steps_per_episode, env, local_model)
                 # save agent locally and test its current greedy policy
                 if episode % config.save_freq == 0:
                         print("length buffer: ", len(buffer))
                         print("saving latest model weights...")
                         local_model.save(os.path.join(agent.checkpoints_dir, "latest.pth"))
                         target_model.save(os.path.join(agent.checkpoints_dir, "episode%d.pth"%episode))
-                        # test current greedy policy
-                        agent.test_agent(config.n_steps_per_episode, env, local_model, "episode%d"%episode) 
+                        # plot the trajectory of the greedy policy of the just saved agent
+                        agent.visualize_trajectory(slices, "episode%d"%episode)
 
 
 

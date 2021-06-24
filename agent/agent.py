@@ -64,7 +64,7 @@ class Agent(BaseAgent):
         self.eps = max(self.eps*self.EPS_DECAY_FACTOR, self.config.eps_end)
         return logs
 
-    def test_agent(self, steps, env, local_model, fname="test"):
+    def test_agent(self, steps, env, local_model):
         """Test the greedy policy learned by the agent, saves the trajectory as a GIF and logs collected reward to wandb.
         Params:
         ==========
@@ -90,6 +90,9 @@ class Agent(BaseAgent):
         
         # send logs to wandb and save trajectory
         wandb.log({log+"_test": r for log,r in env.logs.items()}, commit=True)
+        return slices
+    
+    def visualize_trajectory(self, slices, fname="test"):
         clip = ImageSequenceClip(slices, fps=10)
         if not os.path.exists(os.path.join(self.results_dir, "visuals")):
             os.makedirs(os.path.join(self.results_dir, "visuals"))
