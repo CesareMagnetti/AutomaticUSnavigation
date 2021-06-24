@@ -29,7 +29,7 @@ class DeepQLearning():
         Qtarget = target_model(next_states)
         # 3. evaluate the loss (TDerror) for each head, launch in parallel for efficiency, aggregate each loss by summation
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            futures = [executor.submit(self.single_head_loss, q, q_target, act, rewards, criterion) for q, q_target, act in zip(Q, Qtarget, actions.permute(2,0,1))]
+            futures = [executor.submit(self.single_head_loss, q, q_target, act, rewards, criterion) for q, q_target, act in zip(Q, Qtarget, actions)]
         # 4. aggregate the losses of each head
         loss = sum([f.result() for f in futures])
         return loss
