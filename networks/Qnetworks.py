@@ -1,6 +1,5 @@
 import torch, os
 import torch.nn as nn
-import torch.optim as optim
 
 def setup_networks(config):
     # manual seed

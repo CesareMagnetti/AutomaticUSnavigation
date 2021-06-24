@@ -1,4 +1,3 @@
-from environment.utils import ReplayBuffer
 import torch, os, six, random
 from matplotlib import pyplot as plt
 import numpy as np

@@ -37,7 +37,7 @@ def gather_options(phase="train"):
     # reward signal shaping
     parser.add_argument('--reward_id', type=int, default=2885, help="ID of the anatomical structure of interest. (default: left ventricle, 2885)")
     parser.add_argument('--penalty_per_step', type=float, default=0.1, help="give a small penalty for each step to incentivize moving towards planes of interest.")
-    parser.add_argument('--area_penalty_weight', type=float, default=0.1, help='how much to incentivize the agents to maximize the area of the triangle they span.\n'\
+    parser.add_argument('--area_penalty_weight', type=float, default=0.01, help='how much to incentivize the agents to maximize the area of the triangle they span.\n'\
                                                                     'This is to prevent them from moving towards the edges of a volume, which are meaningless.')
 
     # random seed for reproducibility
@@ -51,19 +51,19 @@ def gather_options(phase="train"):
     parser.add_argument('--n_episodes', type=int, default=2000, help="number of episodes to train the agents for.")
     parser.add_argument('--n_steps_per_episode', type=int, default=250, help="number of steps in each episode.")
     parser.add_argument('--eps_start', type=float, default=1.0, help="epsilon factor for egreedy policy, starting value.")
-    parser.add_argument('--eps_end', type=float, default=0.01, help="epsilon factor for egreedy policy, starting value.")
+    parser.add_argument('--eps_end', type=float, default=0.005, help="epsilon factor for egreedy policy, starting value.")
     parser.add_argument('--stop_eps_decay', type=float, default=0.9, help="after what fraction of episodes we want to have eps = --eps_end.")
     parser.add_argument('--loss', type=str, default="MSE", help='which loss to use to optimize the Qnetwork (MSE, SmoothL1).')
     parser.add_argument('--trainer', type=str, default="DeepQLearning", help='which training routine to use (DeepQLearning, DoubleDeepQLearning...).')
 
     # training options (specific)
     parser.add_argument('--batch_size', type=int, default=64, help="batch size for the replay buffer.")
-    parser.add_argument('--buffer_size', type=int, default=500000, help="capacity of the replay buffer.")
-    parser.add_argument('--gamma', type=int, default=0.99, help="discount factor.")
+    parser.add_argument('--buffer_size', type=int, default=50000, help="capacity of the replay buffer.")
+    parser.add_argument('--gamma', type=int, default=0.999, help="discount factor.")
     parser.add_argument('--learning_rate', '-lr', type=float, default=0.0002, help="learning rate for the q network.")
     parser.add_argument('--update_every', type=int, default=10, help="how often to update the network, in steps.")
     parser.add_argument('--exploring_steps', type=int, default=50000, help="number of purely exploring steps at the beginning.")
-    parser.add_argument('--exploring_restarts', type=int, default=0, help="number of random restarts for the exploring steps.")
+    parser.add_argument('--exploring_restarts', type=int, default=200, help="number of random restarts for the exploring steps.")
     parser.add_argument('--target_update', type=str, default="hard", help="hard or soft update for target network. If hard specify --delay_steps. If soft specify --tau.")
     parser.add_argument('--tau', type=int, default=1e-2, help="weight for soft update of target parameters.")
     parser.add_argument('--delay_steps', type=int, default=10000, help="delay with which a hard update of the target network is conducted.")
@@ -77,8 +77,6 @@ def gather_options(phase="train"):
                                                                     'disabled: completely shuts off wandb. (default = online)')
         parser.add_argument('--save_freq', type=int, default=100, help="save Qnetworks every n episodes. Also tests the agent greedily for logs.")
         parser.add_argument('--log_freq', type=int, default=10, help="frequency (in episodes) with wich we store logs to weights and biases.") 
-        parser.add_argument('--timer', action='store_true', help='saves all relevant time logs.')
-
     elif phase=="test":
         parser.add_argument('--train', action='store_true', default=False, help="training flag set to False.")
         parser.add_argument('--n_runs', type=int, default=5, help="number of test runs to do")

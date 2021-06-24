@@ -53,7 +53,7 @@ class Agent(BaseAgent):
             next_slice = env.step(actions, buffer)
             # learn every UPDATE_EVERY steps and if enough samples in env.buffer
             if self.t_step % self.config.update_every == 0 and len(buffer) > self.config.batch_size:
-                episode_loss+=self.learn(env, local_model, target_model, optimizer, criterion)
+                episode_loss+=self.learn(env, buffer, local_model, target_model, optimizer, criterion)
             # set slice to next slice
             slice= next_slice
         # return episode logs
@@ -125,9 +125,9 @@ class Agent(BaseAgent):
         optimizer.step()
 
         # 3. update target network
-        if self.config.target_update == "soft":
+        if self.config.target_update.lower() == "soft":
             self.soft_update(local_model, target_model, self.config.tau)   
-        elif self.config.target_update == "hard":
+        elif self.config.target_update.lower() == "hard":
             self.hard_update(local_model, target_model, self.config.delay_steps)
         else:
             raise ValueError('unknown ``self.target_update``: {}. possible options: [hard, soft]'.format(self.config.target_update))   

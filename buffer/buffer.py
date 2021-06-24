@@ -4,7 +4,7 @@ from collections import deque
 # ========== REPLAY BUFFER CLASS =========
 class ReplayBuffer:
     """Fixed-size buffer to store experience tuples."""
-
+    BUFFER_SIZE = None
     def __init__(self, buffer_size, batch_size):
         """Initialize a ReplayBuffer object.
         Params
@@ -13,12 +13,12 @@ class ReplayBuffer:
             batch_size (int): batch size sampled each time we call self.sample()
 
         """
-
-        self.memory = deque(maxlen=buffer_size)  
+        BUFFER_SIZE = buffer_size  
         self.batch_size = batch_size
-        # (named tuple does note cope well with multiprocessing, storing a standard tuple instead)
-        #self.experience = namedtuple("Experience", field_names=["states", "actions", "rewards", "next_states"])
-    
+
+    # instanciating memory here will make sure that memory is shared among instances
+    memory = deque(maxlen=BUFFER_SIZE)
+
     def add(self, state, action, reward, next_state):
         """Add a new experience to memory."""
         e = (state, action, reward, next_state)

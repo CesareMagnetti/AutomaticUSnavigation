@@ -191,30 +191,29 @@ class SingleVolumeEnvironment(BaseEnvironment):
             # these planes correspond more or less to a 4-chamber view
             pointA = np.array([np.random.uniform(low=0.85, high=1)*self.sx,
                               0,
-                              np.random.uniform(low=0.7, high=0.92)*self.sz], type=np.int)
+                              np.random.uniform(low=0.7, high=0.92)*self.sz])
 
             pointB = np.array([np.random.uniform(low=0.3, high=0.43)*self.sx,
                               self.sy,
-                              0], type=np.int)
+                              0])
 
             pointC = np.array([np.random.uniform(low=0.3, high=0.43)*self.sx,
                               self.sy,
-                              self.sz], type=np.int) 
+                              self.sz]) 
         else:
-            pointA = np.array([np.random.uniform(low=0., high=1)*self.sx),
+            pointA = np.array([np.random.uniform(low=0., high=1)*self.sx,
                               0,
-                              np.random.uniform(low=0., high=1.)*self.sz)], type=np.int)
+                              np.random.uniform(low=0., high=1.)*self.sz])
 
-            pointB = np.array([np.random.uniform(low=0., high=1.)*self.sx),
+            pointB = np.array([np.random.uniform(low=0., high=1.)*self.sx,
                               self.sy,
-                              np.random.uniform(low=0., high=1.)*self.sz], type=np.int)
+                              np.random.uniform(low=0., high=1.)*self.sz])
 
             pointC = np.array([np.random.uniform(low=0., high=1.)*self.sx,
                               self.sy,
-                              np.random.uniform(low=0., high=1.)*self.sz], type=np.int)             
+                              np.random.uniform(low=0., high=1.)*self.sz])             
         # stack points to define the state
-        self.state = np.vstack([pointA, pointB, pointC])
-
+        self.state = np.vstack([pointA, pointB, pointC]).astype(np.int)
         # reset the logged rewards for this episode
         self.logs = {r: 0 for r in self.logged_rewards}
 
