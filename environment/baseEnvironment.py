@@ -28,8 +28,6 @@ class BaseEnvironment(object):
             os.makedirs(self.checkpoints_dir)
         if not os.path.exists(self.results_dir):
             os.makedirs(self.results_dir)
-        # set up the replay buffer
-        self.buffer = ReplayBuffer(config.buffer_size, config.batch_size)
         # save the config for any options we might need
         self.config = config
 
@@ -39,7 +37,7 @@ class BaseEnvironment(object):
         """
 
     @abstractmethod
-    def step(self, action):
+    def step(self, action, buffer):
         """Perform an input action, observe the next state and reward.
         Automatically stores the tuple (state, action, reward, next_state) to the replay buffer.
         """
@@ -100,12 +98,13 @@ class BaseEnvironment(object):
     #         return walks
 
     
-    def random_walk(self, n_random_steps, n_random_restarts = 0, return_trajectory=False):
+    def random_walk(self, n_random_steps, buffer = None, n_random_restarts = 0, return_trajectory=False):
         """ Starts a random walk to gather observations (s, a, r, s').
         Will return the number of unique states reached by each agent to quantify the amount of exploration
         Params:
         ==========
             n_random_steps (int): number of steps for which we want the random walk to continue.
+            buffer (buffer/* instance): ReplayBuffer instance to collect memory.
             n_random_restarts (int): number of times we reset the agent to a random position during the walk.
             return_trajectory (bool): if True we return the trajectory followed by the agent.
         """
@@ -120,7 +119,7 @@ class BaseEnvironment(object):
             # random action
             action = np.vstack([random.choice(np.arange(self.config.action_size)) for _ in range(self.config.n_agents)])
             # step the environment according to this random action (automatically stores (s, a, r ,s') to buffer)
-            _ = self.step(action)
+            _ = self.step(action, buffer)
             # get the visual if needed
             if return_trajectory:
                 trajectory.append(self.state)

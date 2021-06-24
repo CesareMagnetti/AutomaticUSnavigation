@@ -159,9 +159,13 @@ class SingleVolumeEnvironment(BaseEnvironment):
 
         return rewards
 
-    def step(self, action):
+    def step(self, action, buffer=None):
         """Perform an input action (discrete action), observe the next state and reward.
         Automatically stores the tuple (state, action, reward, next_state) to the replay buffer.
+        Params:
+        ==========
+            action (int): discrete action (see baseEnvironment.mapActionToIncrement())
+            buffer(buffer/* instance): ReplayBuffer class to store memory.
         """
         # get the increment corresponding to this action
         increment = np.vstack([self.mapActionToIncrement(act) for act in action])
@@ -175,7 +179,8 @@ class SingleVolumeEnvironment(BaseEnvironment):
         for r in rewards:
             self.logs[r]+=rewards[r]
         # add transition to replay buffer
-        self.buffer.add(state, action, sum(rewards.values()), next_state)
+        if buffer is not None:
+            buffer.add(state, action, sum(rewards.values()), next_state)
         # update the current state
         self.state = next_state
         return next_slice

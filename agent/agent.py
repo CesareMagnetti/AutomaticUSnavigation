@@ -28,7 +28,7 @@ class Agent(BaseAgent):
         else:
             raise NotImplementedError()
 
-    def play_episode(self, env, local_model, target_model, optimizer, criterion):
+    def play_episode(self, env, local_model, target_model, optimizer, criterion, buffer):
         """ Plays one episode on an input environment.
         Params:
         ==========
@@ -38,6 +38,7 @@ class Agent(BaseAgent):
                                           (it is a hard copy or a running average of the local model, helps against diverging)
             optimizer (PyTorch optimizer): optimizer to update the local network weights.
             criterion (PyTorch Module): loss to minimize in order to train the local network.
+            buffer (buffer/* object): replay buffer shared amongst processes (each process pushes to the same memory.)
         Returns logs (dict): all relevant logs acquired throughout the episode.
         """  
         self.episode+=1
@@ -49,9 +50,9 @@ class Agent(BaseAgent):
             # get action from current state
             actions = self.act(slice, local_model, self.eps) 
             # observe next state (automatically adds (state, action, reward, next_state) to env.buffer) 
-            next_slice = env.step(actions)
+            next_slice = env.step(actions, buffer)
             # learn every UPDATE_EVERY steps and if enough samples in env.buffer
-            if self.t_step % self.config.update_every == 0 and len(env.buffer) > self.config.batch_size:
+            if self.t_step % self.config.update_every == 0 and len(buffer) > self.config.batch_size:
                 episode_loss+=self.learn(env, local_model, target_model, optimizer, criterion)
             # set slice to next slice
             slice= next_slice
@@ -82,7 +83,7 @@ class Agent(BaseAgent):
             slices.append(slice[..., np.newaxis]*np.ones(3))
             # get action from current state
             actions = self.act(slice, local_model)  
-            # observe next state (automatically adds (state, action, reward, next_state) to env.buffer) 
+            # observe next state (we do not pass a buffer at test time)
             next_slice = env.step(actions)
             # set slice to next slice
             slice = next_slice
@@ -95,11 +96,12 @@ class Agent(BaseAgent):
         clip.write_gif(os.path.join(self.results_dir, "visuals", fname+".gif"), fps=10)
         wandb.save(os.path.join(self.results_dir, "visuals", fname+".gif"))
     
-    def learn(self, env, local_model, target_model, optimizer, criterion):
+    def learn(self, env, buffer, local_model, target_model, optimizer, criterion):
         """ Update value parameters using given batch of experience tuples.
         Params:
         ==========
             env (environment/* instance): the environment the agent will interact with while training.
+            buffer (buffer/* object): replay buffer shared amongst processes (each process pushes to the same memory.)
             local_model (PyTorch model): pytorch network that will be trained using a particular training routine (i.e. DQN)
             target_model (PyTorch model): pytorch network that will be used as a target to estimate future Qvalues. 
                                           (it is a hard copy or a running average of the local model, helps against diverging)
@@ -107,7 +109,7 @@ class Agent(BaseAgent):
             criterion (PyTorch Module): loss to minimize in order to train the local network.
         """  
         # 1. organize batch
-        states, actions, rewards, next_states = env.buffer.sample()
+        states, actions, rewards, next_states = buffer.sample()
         planes = env.sample_planes(states+next_states, process=True)
         # concatenate and move to gpu
         states = torch.from_numpy(np.vstack(planes[:self.config.batch_size])).float().to(self.config.device)

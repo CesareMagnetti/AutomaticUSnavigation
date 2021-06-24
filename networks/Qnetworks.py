@@ -11,21 +11,13 @@ def setup_networks(config):
     qnetwork_target = SimpleQNetwork((1, config.load_size, config.load_size), config.action_size, config.n_agents, config.seed, config.n_blocks_Q,
                                       config.downsampling_Q, config.n_features_Q, config.dropout_Q).to(config.device)
     print("Qnetwork instanciated: {} params.\n".format(qnetwork_local.count_parameters()), qnetwork_local)
-    # 2. setup the optimizer for the local qnetwork
-    optimizer = optim.Adam(qnetwork_local.parameters(), lr=config.learning_rate)
-    # 3. load from checkpoint if needed
+    # 2. load from checkpoint if needed
     if config.load is not None:
         print("loading: {} ...".format(config.load))
         qnetwork_local.load(os.path.join(config.checkpoints_dir, config.name, config.load+".pth"))
         qnetwork_target.load(os.path.join(config.checkpoints_dir, config.name, config.load+".pth"))
-    # 4. setup the training criterion
-    if "mse" in config.loss.lower():
-        criterion = nn.MSELoss()
-    elif "smooth" in config.loss.lower():
-        criterion = nn.SmoothL1Loss()
-    else:
-        raise ValueError()
-    return qnetwork_local, qnetwork_target, optimizer, criterion
+
+    return qnetwork_local, qnetwork_target
 
 
 # ===== BUILDING BLOCKS =====
