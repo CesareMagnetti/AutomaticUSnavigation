@@ -185,28 +185,28 @@ class SingleVolumeEnvironment(BaseEnvironment):
         if self.config.easy_objective:
             # these planes correspond more or less to a 4-chamber view
             pointA = np.array([np.random.uniform(low=0.85, high=1)*self.sx,
-                            0,
-                            np.random.uniform(low=0.7, high=0.92)*self.sz])
+                              0,
+                              np.random.uniform(low=0.7, high=0.92)*self.sz], type=np.int)
 
             pointB = np.array([np.random.uniform(low=0.3, high=0.43)*self.sx,
-                            self.sy,
-                            0])
+                              self.sy,
+                              0], type=np.int)
 
             pointC = np.array([np.random.uniform(low=0.3, high=0.43)*self.sx,
-                            self.sy,
-                            self.sz]) 
+                              self.sy,
+                              self.sz], type=np.int) 
         else:
-            pointA = np.array([np.random.uniform(low=0., high=1)*self.sx,
-                            0,
-                            np.random.uniform(low=0., high=1.)*self.sz])
+            pointA = np.array([np.random.uniform(low=0., high=1)*self.sx),
+                              0,
+                              np.random.uniform(low=0., high=1.)*self.sz)], type=np.int)
 
-            pointB = np.array([np.random.uniform(low=0., high=1.)*self.sx,
-                            self.sy,
-                            np.random.uniform(low=0., high=1.)*self.sz])
+            pointB = np.array([np.random.uniform(low=0., high=1.)*self.sx),
+                              self.sy,
+                              np.random.uniform(low=0., high=1.)*self.sz], type=np.int)
 
             pointC = np.array([np.random.uniform(low=0., high=1.)*self.sx,
-                            self.sy,
-                            np.random.uniform(low=0., high=1.)*self.sz])             
+                              self.sy,
+                              np.random.uniform(low=0., high=1.)*self.sz], type=np.int)             
         # stack points to define the state
         self.state = np.vstack([pointA, pointB, pointC])
 
