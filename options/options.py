@@ -7,9 +7,9 @@ def gather_options(phase="train"):
 
     parser = argparse.ArgumentParser(description='train/test scripts to launch navigation experiments.')
     # I/O directories and data
-    parser.add_argument('--dataroot', '-r',  type=str, help='path to the XCAT CT volumes.')
-    parser.add_argument('--name', '-n', type=str, help='name of the experiment.')
-    parser.add_argument('--volume_ids', '-vol_ids', type=str, default='samp0,samp1,samp2,samp3,samp4,samp5,samp6,samp7', help='filename(s) of the CT volume(s) comma separated.')
+    parser.add_argument('--dataroot', '-r',  type=str, default="/vol/biomedic3/hjr119/XCAT/generation/", help='path to the XCAT CT volumes.')
+    parser.add_argument('--name', '-n', default="sample_experiment", type=str, help='name of the experiment.')
+    parser.add_argument('--volume_ids', '-vol_ids', type=str, default='samp0', help='filename(s) of the CT volume(s) comma separated.')
     parser.add_argument('--ct2us_model_name', '-model', type=str, default='CycleGAN_LPIPS_noIdtLoss_lambda_AB_1',
                         help='filename for the state dict of the ct2us model (.pth) file.\navailable models can be found at ./models')
     parser.add_argument('--results_dir', type=str, default='./results/', help='where to save the trajectory.')
@@ -66,7 +66,7 @@ def gather_options(phase="train"):
     parser.add_argument('--exploring_steps', type=int, default=50000, help="number of purely exploring steps at the beginning.")
     parser.add_argument('--exploring_restarts', type=int, default=200, help="number of random restarts for the exploring steps.")
     parser.add_argument('--target_update', type=str, default="hard", help="hard or soft update for target network. If hard specify --delay_steps. If soft specify --tau.")
-    parser.add_argument('--tau', type=int, default=1e-3, help="weight for soft update of target parameters.")
+    parser.add_argument('--tau', type=float, default=1e-3, help="weight for soft update of target parameters.")
     parser.add_argument('--delay_steps', type=int, default=10000, help="delay with which a hard update of the target network is conducted.")
 
     if phase == "train":
