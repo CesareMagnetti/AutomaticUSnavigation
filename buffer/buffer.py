@@ -46,15 +46,10 @@ class PrioritizedReplayBuffer(ReplayBuffer):
     # instanciating priorities here will make sure that they are shared among instances
     priorities = deque(maxlen=BUFFER_SIZE)
     
-    def push(self, state, action, reward, next_state):
+    def add(self, state, action, reward, next_state):
         
         max_prio = self.priorities.max() if self.buffer else 1.0
-        
-        if len(self.buffer) < self.capacity:
-            self.buffer.append((state, action, reward, next_state, done))
-        else:
-            self.buffer[self.pos] = (state, action, reward, next_state, done)
-        
+        # add to experience
         super(PrioritizedReplayBuffer, self).add(state, action, reward, next_state)
         
         self.priorities[self.pos] = max_prio
@@ -91,4 +86,4 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             self.priorities[idx] = prio
 
     def __len__(self):
-        return len(self.buffer)
+        return len(self.memory)
