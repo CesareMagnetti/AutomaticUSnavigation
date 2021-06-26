@@ -84,8 +84,8 @@ class DoubleDeepQLearning():
         # 1. gather Q values for the actions taken at the current state
         Qa = Q.gather(1, actions).squeeze()
         # 2. get the discrete action that maximizes the target value at the next state
-        a_next = Qtarget_next.max(1)[1].unsqueeze(0)
-        Qa_next = Q_next.gather(1, a_next).detach().squeeze()
+        a_next = Q_next.max(1)[1].unsqueeze(0)
+        Qa_next = Qtarget_next.gather(1, a_next).detach().squeeze()
         # 3. backup the expected value of this action by bootstrapping on the greedy value of the next state
         Qhat = rewards + self.gamma*Qa_next
         # 4. evalauate TD error as a fit function for the network
