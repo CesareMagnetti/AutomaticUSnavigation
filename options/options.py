@@ -36,10 +36,13 @@ def gather_options(phase="train"):
     parser.add_argument('--n_agents', type=int, default=3, help="how many RL agents (heads) will share the same CNN backbone.")
 
     # reward signal shaping
-    parser.add_argument('--reward_id', type=int, default=2885, help="ID of the anatomical structure of interest. (default: left ventricle, 2885)")
-    parser.add_argument('--penalty_per_step', type=float, default=0.1, help="give a small penalty for each step to incentivize moving towards planes of interest.")
-    parser.add_argument('--area_penalty_weight', type=float, default=0.01, help='how much to incentivize the agents to maximize the area of the triangle they span.\n'\
+    parser.add_argument('--anatomyRewardIDs', type=int, default=2885, help="ID of the anatomical structure of interest. (default: left ventricle, 2885). if multiple IDs separate by comma.")
+    parser.add_argument('--steppingReward', type=float, default=0.1, help="give a small penalty for each step to incentivize moving towards planes of interest.")
+    parser.add_argument('--areaRewardWeight', type=float, default=0.01, help='how much to incentivize the agents to maximize the area of the triangle they span.\n'\
                                                                     'This is to prevent them from moving towards the edges of a volume, which are meaningless.')
+    parser.add_argument('--oobReward', type=float, default=0.01, help='how much to incentivize the agents to maximize the area of the triangle they span.\n'\
+                                                                    'This is to prevent them from moving towards the edges of a volume, which are meaningless.')
+
 
     # random seed for reproducibility
     parser.add_argument('--seed', type=int, default=1, help="random seed for reproducibility.")

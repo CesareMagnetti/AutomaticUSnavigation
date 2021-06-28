@@ -1,10 +1,10 @@
 from environment.baseEnvironment import BaseEnvironment
+from rewards.rewards import *
 import numpy as np
 import SimpleITK as sitk
 import os
 
-def get_traingle_area(a, b, c) :
-    return 0.5 * np.linalg.norm( np.cross( b-a, c-a ) )
+
 
 class SingleVolumeEnvironment(BaseEnvironment):
     def __init__(self, config, vol_id=0):
@@ -44,7 +44,7 @@ class SingleVolumeEnvironment(BaseEnvironment):
         # 1. we reward based on a particular anatomical structure being present in the slice sampled by the current state
         #    to this end we have segmentations of the volume and reward_id corresponds to the value of the anatomical tissue
         #    of interest in the segmentation (i.e. the ID of the left ventricle is 2885)
-        self.rewardID = config.reward_id
+        self.anatomyReward = AnatomyReward(config.reward_ids)
         # 2. we give a small penalty for each step in which the above ID is not present in the sampled slice. As soon as even
         #    one pixel of the structure of interest enters the sampled slice, we stop the penalty. Like this the agent is incetivized
         #    to move towards the region of interest quickly.

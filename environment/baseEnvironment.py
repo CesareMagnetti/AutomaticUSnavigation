@@ -261,6 +261,7 @@ class BaseEnvironment(object):
         3: -1 in y coordinate
         4: +1 in z coordinate
         5: -1 in z coordinate
+        6: stays still/does not lead to an increment
 
         returns -> incr (np.ndarray) of shape: (3,). It contains a unit increment in a particular 3D direction.
         """
@@ -276,6 +277,8 @@ class BaseEnvironment(object):
             incr = np.array([0, 0, 1])
         elif action == 5:
             incr = np.array([0, 0, -1])
+        elif action == 6:
+            incr = np.array([0, 0, 0])
         else:
             raise ValueError('unknown action: %d, legal actions: [0, 1, 2, 3, 4, 5]'%action)
         
@@ -294,6 +297,7 @@ class BaseEnvironment(object):
         3: -1 in y coordinate
         4: +1 in z coordinate
         5: -1 in z coordinate
+        6: stays still/does not lead to an increment
 
         returns -> action (int). It contains the discrete action of a particular 3D unit movement.
         """
@@ -309,6 +313,8 @@ class BaseEnvironment(object):
             action = 4
         elif incr[2] == -1:
             action = 5
+        elif incr[0] == 0 and incr[1] == 0 and incr[2] == 0:
+            action = 6
         else:
             raise ValueError('unknown increment: {}.'.format(incr))
         return action
