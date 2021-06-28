@@ -1,7 +1,7 @@
 from environment.xcatEnvironment import SingleVolumeEnvironment
 from agent.agent import Agent
 from networks.Qnetworks import setup_networks
-from buffer.buffer import ReplayBuffer
+from buffer.buffer import *
 from options.options import gather_options, print_options
 from tqdm import tqdm
 import torch, os, wandb
@@ -33,13 +33,16 @@ def train(config, local_model, target_model, rank=0):
         optimizer = optim.Adam(local_model.parameters(), lr=config.learning_rate)
         # 4. instanciate criterion
         if "mse" in config.loss.lower():
-                criterion = nn.MSELoss()
+                criterion = nn.MSELoss(reduction='none')
         elif "smooth" in config.loss.lower():
-                criterion = nn.SmoothL1Loss()
+                criterion = nn.SmoothL1Loss(reduction='none')
         else:
                 raise ValueError()
         # 5. instanciate replay buffer
-        buffer = ReplayBuffer(config.buffer_size, config.batch_size)
+        if config.alpha>0:
+                buffer = PrioritizedReplayBuffer(config.buffer_size, config.batch_size, config.alpha)
+        else:
+                buffer = ReplayBuffer(config.buffer_size, config.batch_size)
         
         # ==== LAUNCH TRAINING ====
 
@@ -51,8 +54,8 @@ def train(config, local_model, target_model, rank=0):
         if config.wandb in ["online", "offline"]:
                 wandb.login()
         ## uncomment this when not performing a sweep and comment the next line.
-        #wandb.init(project="AutomaticUSnavigation", name=config.name, group=config.name, config=config, mode=config.wandb)
-        wandb.init(config=config, entity="cesare-magnetti", project="AutomaticUSnavigation")
+        wandb.init(project="AutomaticUSnavigation", name=config.name, group=config.name, config=config, mode=config.wandb)
+        #wandb.init(config=config, entity="cesare-magnetti", project="AutomaticUSnavigation")
         config = wandb.config # oddly this ensures wandb works smoothly
         # 3. tell wandb to watch what the model gets up to: gradients, weights, and loss
         wandb.watch(local_model, criterion, log="all", log_freq=config.log_freq)

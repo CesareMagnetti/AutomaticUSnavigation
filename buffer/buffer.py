@@ -4,7 +4,6 @@ from collections import deque
 # ========== REPLAY BUFFER CLASS =========
 class ReplayBuffer:
     """Fixed-size buffer to store experience tuples."""
-    BUFFER_SIZE = None
     def __init__(self, buffer_size, batch_size):
         """Initialize a ReplayBuffer object.
         Params
@@ -13,11 +12,9 @@ class ReplayBuffer:
             batch_size (int): batch size sampled each time we call self.sample()
 
         """
-        BUFFER_SIZE = buffer_size  
+        self.buffer_size = buffer_size  
         self.batch_size = batch_size
-
-    # instanciating memory here will make sure that memory is shared among instances
-    memory = deque(maxlen=BUFFER_SIZE)
+        self.memory = deque(maxlen=buffer_size)
 
     def add(self, state, action, reward, next_state):
         """Add a new experience to memory."""
@@ -40,33 +37,30 @@ class PrioritizedReplayBuffer(ReplayBuffer):
     def __init__(self, buffer_size, batch_size, prob_alpha=0.6):
         ReplayBuffer.__init__(self, buffer_size, batch_size)
         self.prob_alpha = prob_alpha
-        self.capacity = capacity
-    
-    # instanciating priorities here will make sure that they are shared among instances
-    priorities = deque(maxlen=BUFFER_SIZE)
+        self.priorities = deque(maxlen=buffer_size)
     
     def add(self, state, action, reward, next_state):
         # 1. add to experience
         super(PrioritizedReplayBuffer, self).add(state, action, reward, next_state)
         # 2. add to buffer with max probability to incentivize exploration of new transitions
-        max_prio = self.priorities.max() if self.buffer else 1.0
+        max_prio = max(self.priorities) if len(self.priorities)>0 else 1.0
         self.priorities.append(max_prio)
     
     def sample(self, beta=0.4):
         # 1. get prioritized distribution
         probs = np.array(self.priorities)
-        probs = self.priorities ** self.prob_alpha
+        probs = probs ** self.prob_alpha
         probs /= probs.sum()
         # 2. sample experiences
         indices = np.random.choice(len(self.memory), size=self.batch_size, replace=False, p=probs)
-        experiences = [self.memory[i] for i in indices]
+        experiences = [self.memory[i] for i in indices] # random lookup in a deque is more efficient
         # 3. reorganize batch
         batch = zip(*experiences)
-        # 3. sample weights for bias correction
+        # 3. sample weights for bias correction of the gradient
         N = len(self.memory)
         max_weight = (probs.min() * N) ** (-beta)
         weights = ((N*probs[indices])**(-beta))/max_weight
-        return batch, weights
+        return batch, weights, indices
     
     def update_priorities(self, batch_indices, batch_priorities):
         for idx, prio in zip(batch_indices, batch_priorities):

@@ -1,6 +1,6 @@
 
 from agent.baseAgent import BaseAgent
-from agent.trainers import DeepQLearning, DoubleDeepQLearning
+from agent.trainers import *
 import numpy as np
 import torch, os, wandb
 from moviepy.editor import ImageSequenceClip
@@ -22,11 +22,17 @@ class Agent(BaseAgent):
         self.eps = self.config.eps_start
         # set the trainer algorithm
         if config.trainer.lower() in ["deepqlearning", "qlearning", "dqn"]:
-            self.trainer = DeepQLearning(gamma=config.gamma)
+            if config.beta>0:
+                self.trainer = PrioritizedDeepQLearning(gamma=config.gamma)
+            else:
+                self.trainer = DeepQLearning(gamma=config.gamma)
         elif config.trainer.lower() in ["doubledeepqlearning", "doubleqlearning", "doubledqn", "ddqn"]:
-            self.trainer = DoubleDeepQLearning(gamma=config.gamma)
+            if config.beta>0:
+                self.trainer = PrioritizedDoubleDeepQLearning(gamma=config.gamma)
+            else:
+                self.trainer = DoubleDeepQLearning(gamma=config.gamma)
         else:
-            raise NotImplementedError()
+            raise NotImplementedError('unknown ``trainer`` configuration: {}. available options: [DQN, DoubleDQN]'.format(config.trainer))
 
     def play_episode(self, env, local_model, target_model, optimizer, criterion, buffer):
         """ Plays one episode on an input environment.
@@ -112,7 +118,11 @@ class Agent(BaseAgent):
             criterion (PyTorch Module): loss to minimize in order to train the local network.
         """  
         # 1. organize batch
-        states, actions, rewards, next_states = buffer.sample()
+        if self.config.beta > 0: # if prioritized learning we also return the bias correction weights and the priorities indices to update
+            batch, weights, indices = buffer.sample(beta=self.config.beta)
+        else:
+            batch = buffer.sample()
+        states, actions, rewards, next_states = batch
         planes = env.sample_planes(states+next_states, process=True)
         # concatenate and move to gpu
         states = torch.from_numpy(np.vstack(planes[:self.config.batch_size])).float().to(self.config.device)
@@ -120,13 +130,14 @@ class Agent(BaseAgent):
         rewards = torch.tensor(rewards).float().to(self.config.device)
         actions = torch.from_numpy(np.hstack(actions)).unsqueeze(-1).long().to(self.config.device)
         batch = (states, actions, rewards, next_states)
-
         # 2. make a training step (retain graph because we will backprop multiple times through the backbone cnn)
         optimizer.zero_grad()
-        loss = self.trainer.step(batch, local_model, target_model, criterion)
+        if self.config.beta > 0: # if prioritized learning we need to modify buffer prioritises as we train
+            loss = self.trainer.step(batch, local_model, target_model, criterion, buffer, weights, indices)
+        else:
+            loss = self.trainer.step(batch, local_model, target_model, criterion)
         loss.backward(retain_graph=True)
         optimizer.step()
-
         # 3. update target network
         if self.config.target_update.lower() == "soft":
             self.soft_update(local_model, target_model, self.config.tau)   
