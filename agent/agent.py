@@ -55,8 +55,10 @@ class Agent(BaseAgent):
             self.t_step+=1
             # get action from current state
             actions = self.act(slice, local_model, self.eps) 
-            # observe next state (automatically adds (state, action, reward, next_state) to env.buffer) 
-            next_slice = env.step(actions, buffer)
+            # step the environment to return a transitiony  
+            transition, next_slice = env.step(actions)
+            # add (state, action, reward, next_state) to buffer
+            buffer.add(*transition)
             # learn every UPDATE_EVERY steps and if enough samples in env.buffer
             if self.t_step % self.config.update_every == 0 and len(buffer) > self.config.batch_size:
                 episode_loss+=self.learn(env, buffer, local_model, target_model, optimizer, criterion)
@@ -89,8 +91,8 @@ class Agent(BaseAgent):
             slices.append(slice[..., np.newaxis]*np.ones(3))
             # get action from current state
             actions = self.act(slice, local_model)  
-            # observe next state (we do not pass a buffer at test time)
-            next_slice = env.step(actions)
+            # observe transition and next_slice
+            transition, next_slice = env.step(actions)
             # set slice to next slice
             slice = next_slice
         

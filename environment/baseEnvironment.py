@@ -52,6 +52,66 @@ class BaseEnvironment(object):
         """
         raise NotImplementedError()
     
+    def sample_plane(self, state, return_seg=False, oob_black=True):
+        """ function to sample a plane from 3 3D points (state)
+        Params:
+        ==========
+            state (np.ndarray of shape (3,3)): v-stacked 3D points that will define a particular plane in the CT volume.
+            return_seg (bool): flag if we wish to return the corresponding segmentation map. (default=False)
+            oob_black (bool): flack if we wish to mask out of volume pixels to black. (default=True)
+
+            returns -> plane (torch.tensor of shape (1, 1, self.sy, self.sx)): corresponding plane sampled from the CT volume (normalized and unsqueezed to 4D)
+                       seg (optional, np.ndarray of shape (self.sy, self.sx)): segmentation map of the sampled plane
+        """
+        # get plane coefs
+        a,b,c,d = self.get_plane_coefs(*state)
+        # extract corresponding slice
+        main_ax = np.argmax([abs(a), abs(b), abs(c)])
+        if main_ax == 0:
+            Y, Z = np.meshgrid(np.arange(self.sy), np.arange(self.sz), indexing='ij')
+            X = (d - b * Y - c * Z) / a
+
+            X = X.round().astype(np.int)
+            P = X.copy()
+            S = self.sx-1
+
+            X[X <= 0] = 0
+            X[X >= self.sx] = self.sx-1
+
+        elif main_ax==1:
+            X, Z = np.meshgrid(np.arange(self.sx), np.arange(self.sz), indexing='ij')
+            Y = (d - a * X - c * Z) / b
+
+            Y = Y.round().astype(np.int)
+            P = Y.copy()
+            S = self.sy-1
+
+            Y[Y <= 0] = 0
+            Y[Y >= self.sy] = self.sy-1
+        
+        elif main_ax==2:
+            X, Y = np.meshgrid(np.arange(self.sx), np.arange(self.sy), indexing='ij')
+            Z = (d - a * X - b * Y) / c
+
+            Z = Z.round().astype(np.int)
+            P = Z.copy()
+            S = self.sz-1
+
+            Z[Z <= 0] = 0
+            Z[Z >= self.sz] = self.sz-1
+        
+        # sample plane from the current volume
+        plane = self.Volume[X, Y, Z]
+
+        if oob_black == True:
+            plane[P < 0] = 0
+            plane[P > S] = 0
+        
+        if return_seg:
+            return plane, self.Segmentation[X, Y, Z]
+        else:
+            return plane
+
     def sample_planes(self, states, process=False, **kwargs):
         """Sample multiple queried planes launching multiple threads in parallel. This function is useful if the self.sample_plane()
         function is time consuming and we whish to query several planes. And example of this scenario is when we sample a batch from

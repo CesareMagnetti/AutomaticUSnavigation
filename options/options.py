@@ -32,7 +32,7 @@ def gather_options(phase="train"):
     parser.add_argument('--dropout_Q', action='store_true', help="if use dropout in the Qnetwork (p=0.5 after conv layers and p=0.1 after linear layers).")
 
     # agent specs
-    parser.add_argument('--action_size', type=int, default=6, help="how many action can a single agent perform.\n(i.e. up/down,left/right,forward/backwards = 6 in a 3D volume).")
+    parser.add_argument('--action_size', type=int, default=7, help="how many action can a single agent perform.\n(i.e. up/down,left/right,forward/backwards,do nothing = 7 in a 3D volume).")
     parser.add_argument('--n_agents', type=int, default=3, help="how many RL agents (heads) will share the same CNN backbone.")
 
     # reward signal shaping

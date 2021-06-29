@@ -39,31 +39,16 @@ class SingleVolumeEnvironment(BaseEnvironment):
         itkSegmentation = sitk.ReadImage(os.path.join(self.dataroot, self.vol_id+"_SEG_1.nii.gz"))
         Segmentation = sitk.GetArrayFromImage(itkSegmentation)
         self.Segmentation = Segmentation
-
-        # setup the reward function arguments:
-        # 1. we reward based on a particular anatomical structure being present in the slice sampled by the current state
-        #    to this end we have segmentations of the volume and reward_id corresponds to the value of the anatomical tissue
-        #    of interest in the segmentation (i.e. the ID of the left ventricle is 2885)
-        self.anatomyReward = AnatomyReward(config.reward_ids)
-        # 2. we give a small penalty for each step in which the above ID is not present in the sampled slice. As soon as even
-        #    one pixel of the structure of interest enters the sampled slice, we stop the penalty. Like this the agent is incetivized
-        #    to move towards the region of interest quickly.
-        self.penalty_per_step = config.penalty_per_step
-        # 3. In order to avoid the agents to cluster together at an edge, we give a reward to maximize the area of the 2D triangle spanned
-        #    by the 3 agents. This should incentivize the agents to sample more meaningful planes as if they clustered at an edge, the resulting
-        #    image would be meaningless and mostly black. Arguably this should also embed the agent with some prior information about the fact 
-        #    that they are sampling a plane and should work together (with a shared objective) rather than indepentently.
-        self.area_penalty_weight = config.area_penalty_weight
-        # based on the above values we select which rewards we are logging
-        self.logged_rewards = ["rewardAnatomy"]
-        if self.penalty_per_step>0:
-            self.logged_rewards+=["rewardStep"]
-        if self.area_penalty_weight>0:
-            self.logged_rewards+=["rewardArea"]
         
         # get starting configuration
         self.sx, self.sy, self.sz = self.Volume.shape
         self.reset()
+
+        # setup the reward function arguments:
+        self.rewards = {"anatomyReward": AnatomyReward(config.anatomyRewardIDs),
+                        "steppingReward": SteppingReward(config.steppingReward),
+                        "areaReward": AreaReward(config.areaRewardWeight, self.sx*self.sy),
+                        "oobReward":OutOfBoundaryReward(config.oobReward, self.sx, self.sy, self.sz)}
 
     def sample_plane(self, state, return_seg=False, oob_black=True):
         """ function to sample a plane from 3 3D points (state)
@@ -125,47 +110,30 @@ class SingleVolumeEnvironment(BaseEnvironment):
         else:
             return plane
 
-    def get_reward(self, seg):
+    def get_reward(self, seg, state):
         """Calculates the corresponding reward of stepping into a state given its segmentation map.
         Params:
         ==========
-            seg (np.ndarray of shape (self.sy, self.sx)): segmentation map from which to extract the reward
+            seg (np.ndarray of shape (self.sy, self.sx)): segmentation map from which to extract the reward.
+            state (np.ndarray): 3 stacked 3D arrays representing the coordinates of the agent.
+        Returns -> rewards (dict): the corresponding rewards collected by the agent.
         """
         rewards = {}
-        # sample the according reward (i.e. count of pixels of a particular anatomical structure)
-        # by default the left ventricle ID in the segmentation is 2885. We will count the number
-        # of pixels in the the queried anatomical structure as a fit function.The agent will have to
-        # find a view that maximizes the amount of context pixels present in the image.
-        rewardAnatomy = (seg==self.rewardID).sum().item()
-        rewardAnatomy/=np.prod(seg.shape) # normalize by all pixels count to set in (0, 1) range
-        rewards["rewardAnatomy"] = rewardAnatomy
-
-        # give a penalty for each step that does not contain any anatomical structure of interest.
-        # this should incentivize moving towards planes of interest quickly to not receive negative rewards.
-        if "rewardStep" in self.logged_rewards:
-            if rewardAnatomy > 0:
-                rewardStep = 0
-            else:
-                rewardStep = -self.penalty_per_step 
-            rewards["rewardStep"] = rewardStep
-
-        # incentivize the agent to stay in a relevant plane (not at the edges of the volume) by
-        # maximizing the area of the triangle spanned by the three points
-        if "rewardArea" in self.logged_rewards:
-            area = get_traingle_area(*self.state)
-            # normalize this area by the area of a 2D slice (like above)
-            area/=np.prod(seg.shape)
-            rewards["rewardArea"] = self.area_penalty_weight*area 
-
+        # 1 reward given that we are slicing the right anatomical content.
+        rewards["anatomyReward"] = self.rewards["anatomyReward"](seg)
+        # 2 reward given upon stepping in a new state (only if there is no content of interest in the slice).
+        rewards["steppingReward"] = self.rewards["steppingReward"](not rewards["anatomyReward"]>0)
+        # 3 reward agents to be spreaded out rather homogeneously across the volume (not clustered).
+        rewards["areaReward"] = self.rewards["areaReward"](*state)
+        # 4 give penalties when the agents move outside the volume.
+        rewards["oobReward"] = self.rewards["oobReward"](*state)
         return rewards
 
-    def step(self, action, buffer=None):
+    def step(self, action):
         """Perform an input action (discrete action), observe the next state and reward.
-        Automatically stores the tuple (state, action, reward, next_state) to the replay buffer.
         Params:
         ==========
             action (int): discrete action (see baseEnvironment.mapActionToIncrement())
-            buffer(buffer/* instance): ReplayBuffer class to store memory.
         """
         # get the increment corresponding to this action
         increment = np.vstack([self.mapActionToIncrement(act) for act in action])
@@ -174,16 +142,14 @@ class SingleVolumeEnvironment(BaseEnvironment):
         next_state = state + increment
         # observe the next plane and get the reward from segmentation map
         next_slice, segmentation = self.sample_plane(state=next_state, return_seg=True)
-        rewards = self.get_reward(segmentation)
+        rewards = self.get_reward(segmentation, next_state)
         # log these rewards to the current episode count
         for r in rewards:
             self.logs[r]+=rewards[r]
-        # add transition to replay buffer
-        if buffer is not None:
-            buffer.add(state, action, sum(rewards.values()), next_state)
         # update the current state
         self.state = next_state
-        return next_slice
+        # return transition and the next_slice which has already been sampled
+        return (state, action, sum(rewards.values()), next_state), next_slice
     
     def reset(self):
         # sample a random plane (defined by 3 points) to start the episode from
@@ -215,7 +181,7 @@ class SingleVolumeEnvironment(BaseEnvironment):
         # stack points to define the state
         self.state = np.vstack([pointA, pointB, pointC]).astype(np.int)
         # reset the logged rewards for this episode
-        self.logs = {r: 0 for r in self.logged_rewards}
+        self.logs = {r: 0 for r in self.rewards}
 
 # ==== HELPER FUNCTIONS ====
 def intensity_scaling(ndarr, pmin=None, pmax=None, nmin=None, nmax=None):

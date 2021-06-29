@@ -1,7 +1,9 @@
 import numpy as np
 
 class AnatomyReward(object):
-    """Class to assign the anatomical reward signal.
+    """Class to assign the anatomical reward signal. we reward based on a particular anatomical structure being present
+    in the slice sampled by the current state to this end we have segmentations of the volume and reward_id corresponds
+    to the value of the anatomical tissue of interest in the segmentation (i.e. the ID of the left ventricle is 2885).
     """
     def __init__(self, rewardIDs):
         # if more IDs are passed store in an array
@@ -21,7 +23,9 @@ class AnatomyReward(object):
         return rewardAnatomy
 
 class SteppingReward(object):
-    """Class to assign the default reward received upon making a step
+    """Class to assign the default reward received upon making a step. we give a small penalty for each step in which the above ID
+    is not present in the sampled slice. As soon as even one pixel of the structure of interest enters the sampled slice, we stop 
+    the penalty. Like this the agent is incetivized to move towards the region of interest quickly.
     """
     def __init__(self, penalty):
         self.penalty = -abs(penalty)
@@ -42,7 +46,8 @@ class SteppingReward(object):
 
 class AreaReward(object):
     """ In order to prevent the agents from clustering close together, we reward proportionally to the area of the triangle spanned by the 3 agents,
-    to encourage them to stay far away from each other and hence in a more meaningful part of the volume.
+    to encourage them to stay far away from each other and hence in a more meaningful part of the volume. Arguably this should also embed the agent
+    with some prior information about the fact that they are sampling a plane and should work together (with a shared objective) rather than indepentently.
     """
     def __init__(self, weight, max_area):
         self.weight = weight
