@@ -1,3 +1,11 @@
+# output folders
+results/
+checkpoints/
+output/
+temp*/
+.vscode
+wandb/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
