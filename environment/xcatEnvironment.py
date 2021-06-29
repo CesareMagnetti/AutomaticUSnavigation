@@ -27,28 +27,30 @@ class SingleVolumeEnvironment(BaseEnvironment):
         self.vol_id = volume_ids[vol_id]
         
         # load queried CT volume
-        itkVolume = sitk.ReadImage(os.path.join(self.dataroot, self.vol_id+"_CT_1.nii.gz"))
+        itkVolume = sitk.ReadImage(os.path.join(self.dataroot, self.vol_id+"_1_CT.nii.gz"))
         Volume = sitk.GetArrayFromImage(itkVolume) 
         # preprocess volume
         if not config.no_preprocess:
             Volume = Volume/Volume.max()*255
             Volume = intensity_scaling(Volume, pmin=config.pmin, pmax=config.pmax, nmin=config.nmin, nmax=config.nmax)
-        self.Volume = Volume.astype(np.uint8)  
+        self.Volume = Volume.astype(np.uint8) 
+        self.sx, self.sy, self.sz = self.Volume.shape 
 
         # load queried CT segmentation
-        itkSegmentation = sitk.ReadImage(os.path.join(self.dataroot, self.vol_id+"_SEG_1.nii.gz"))
+        itkSegmentation = sitk.ReadImage(os.path.join(self.dataroot, self.vol_id+"_1_SEG.nii.gz"))
         Segmentation = sitk.GetArrayFromImage(itkSegmentation)
         self.Segmentation = Segmentation
-        
-        # get starting configuration
-        self.sx, self.sy, self.sz = self.Volume.shape
-        self.reset()
 
         # setup the reward function arguments:
         self.rewards = {"anatomyReward": AnatomyReward(config.anatomyRewardIDs),
                         "steppingReward": SteppingReward(config.steppingReward),
                         "areaReward": AreaReward(config.areaRewardWeight, self.sx*self.sy),
                         "oobReward":OutOfBoundaryReward(config.oobReward, self.sx, self.sy, self.sz)}
+        
+        # get starting configuration
+        self.reset()
+
+
 
     def sample_plane(self, state, return_seg=False, oob_black=True):
         """ function to sample a plane from 3 3D points (state)
@@ -124,9 +126,9 @@ class SingleVolumeEnvironment(BaseEnvironment):
         # 2 reward given upon stepping in a new state (only if there is no content of interest in the slice).
         rewards["steppingReward"] = self.rewards["steppingReward"](not rewards["anatomyReward"]>0)
         # 3 reward agents to be spreaded out rather homogeneously across the volume (not clustered).
-        rewards["areaReward"] = self.rewards["areaReward"](*state)
+        rewards["areaReward"] = self.rewards["areaReward"](state)
         # 4 give penalties when the agents move outside the volume.
-        rewards["oobReward"] = self.rewards["oobReward"](*state)
+        rewards["oobReward"] = self.rewards["oobReward"](state)
         return rewards
 
     def step(self, action):

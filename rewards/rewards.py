@@ -7,7 +7,7 @@ class AnatomyReward(object):
     """
     def __init__(self, rewardIDs):
         # if more IDs are passed store in an array
-        self.IDs = rewardIDs.split(",")
+        self.IDs = [int(ID) for ID in rewardIDs.split(",")]
     
     def __call__(self, seg):
         """ evaluates the anotical reward as the ratio of pixels containing structures of interest in the segmented slice.
@@ -17,7 +17,7 @@ class AnatomyReward(object):
         returns -> float, ratio of pixels of interest wrt slice pixel count.
         """
         rewardAnatomy = 0
-        for ID in seld.IDs:
+        for ID in self.IDs:
             rewardAnatomy += (seg==ID).sum().item()
         rewardAnatomy/=np.prod(seg.shape)
         return rewardAnatomy

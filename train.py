@@ -8,7 +8,6 @@ import torch, os, wandb
 import torch.optim as optim
 import torch.nn as nn
 import torch.multiprocessing as mp
-import warnings
 
 def train(config, local_model, target_model, rank=0):
         """ Trains an agent on an input environment, given networks/optimizers and training criterions.
@@ -93,7 +92,7 @@ if __name__=="__main__":
         # 3. launch training
         # MULTI-PROCESS TRAINING
         if config.n_processes>1:
-                warnings.warning("MULTI-PROCESSING DOES NOT CURRENTLY WORK.")
+                raise NotImplementedError("MULTI-PROCESSING DOES NOT CURRENTLY WORK.")
                 mp.set_start_method('spawn')
                 processes = []
                 for rank in range(config.n_processes):
