@@ -84,8 +84,14 @@ class OutOfBoundaryReward(object):
         returns -> float, corresponding reward
         """
         total_penalty = 0
-        for s in next_state:
-            total_penalty+=self.penalty*max(0, s[0] - self.sx)
-            total_penalty+=self.penalty*max(0, s[1] - self.sy)
-            total_penalty+=self.penalty*max(0, s[2] - self.sz)      
+        for point in next_state:
+            for coord, s in zip(point, [self.sx, self.sy, self.sz]):
+                # the origin of the volume is at (0,0,0), hence the agent is out of boundary
+                # if its position is >= than the resolution of the volume OR if its position is
+                # negative. We count the number of pixels out of boundary for each dimension as a penalty,
+                # scaled by self.penalty
+                if coord >= 0:
+                    total_penalty+=self.penalty*max(0, coord-s)
+                else:
+                    total_penalty+=self.penalty*abs(coord)     
         return total_penalty

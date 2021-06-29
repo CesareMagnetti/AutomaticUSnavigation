@@ -5,7 +5,7 @@ from tqdm import tqdm
 from abc import abstractmethod, ABCMeta
 import matplotlib.gridspec as gridspec
 import concurrent.futures
-from moviepy.editor import ImageSequenceClip
+
 
 @six.add_metaclass(ABCMeta)
 class BaseEnvironment(object):
@@ -51,66 +51,6 @@ class BaseEnvironment(object):
         """Calculates the corresponding reward of stepping into a new state.
         """
         raise NotImplementedError()
-    
-    def sample_plane(self, state, return_seg=False, oob_black=True):
-        """ function to sample a plane from 3 3D points (state)
-        Params:
-        ==========
-            state (np.ndarray of shape (3,3)): v-stacked 3D points that will define a particular plane in the CT volume.
-            return_seg (bool): flag if we wish to return the corresponding segmentation map. (default=False)
-            oob_black (bool): flack if we wish to mask out of volume pixels to black. (default=True)
-
-            returns -> plane (torch.tensor of shape (1, 1, self.sy, self.sx)): corresponding plane sampled from the CT volume (normalized and unsqueezed to 4D)
-                       seg (optional, np.ndarray of shape (self.sy, self.sx)): segmentation map of the sampled plane
-        """
-        # get plane coefs
-        a,b,c,d = self.get_plane_coefs(*state)
-        # extract corresponding slice
-        main_ax = np.argmax([abs(a), abs(b), abs(c)])
-        if main_ax == 0:
-            Y, Z = np.meshgrid(np.arange(self.sy), np.arange(self.sz), indexing='ij')
-            X = (d - b * Y - c * Z) / a
-
-            X = X.round().astype(np.int)
-            P = X.copy()
-            S = self.sx-1
-
-            X[X <= 0] = 0
-            X[X >= self.sx] = self.sx-1
-
-        elif main_ax==1:
-            X, Z = np.meshgrid(np.arange(self.sx), np.arange(self.sz), indexing='ij')
-            Y = (d - a * X - c * Z) / b
-
-            Y = Y.round().astype(np.int)
-            P = Y.copy()
-            S = self.sy-1
-
-            Y[Y <= 0] = 0
-            Y[Y >= self.sy] = self.sy-1
-        
-        elif main_ax==2:
-            X, Y = np.meshgrid(np.arange(self.sx), np.arange(self.sy), indexing='ij')
-            Z = (d - a * X - b * Y) / c
-
-            Z = Z.round().astype(np.int)
-            P = Z.copy()
-            S = self.sz-1
-
-            Z[Z <= 0] = 0
-            Z[Z >= self.sz] = self.sz-1
-        
-        # sample plane from the current volume
-        plane = self.Volume[X, Y, Z]
-
-        if oob_black == True:
-            plane[P < 0] = 0
-            plane[P > S] = 0
-        
-        if return_seg:
-            return plane, self.Segmentation[X, Y, Z]
-        else:
-            return plane
 
     def sample_planes(self, states, process=False, **kwargs):
         """Sample multiple queried planes launching multiple threads in parallel. This function is useful if the self.sample_plane()
@@ -136,26 +76,6 @@ class BaseEnvironment(object):
         if process:
             planes = [p[np.newaxis, np.newaxis, ...]/255 for p in planes]
         return planes
-
-    # def random_walks(self, n_random_steps, n_walks, return_trajectory=False):
-    #     """ Starts ``n_walks`` random walks in parallel to gather observations (s, a, r, s').
-    #     See self.random_walk() for more details.
-    #     Params:
-    #     ==========
-    #         n_random_steps (int): number of steps for which we want the random walks to continue.
-    #         n_walks (int): number of walks we want to do.
-    #         return_trajectory (bool): if True we return the trajectories followed by the agent.
-    #     """
-    #     n_random_steps = int(n_random_steps/n_walks)
-        
-    #     with concurrent.futures.ThreadPoolExecutor() as executor:
-    #         futures = [executor.submit(self.random_walk, n_random_steps, return_trajectory=return_trajectory) for _ in range(n_walks)]
-        
-    #     if return_trajectory:
-    #         walks = []
-    #         walks= [f.result() for f in futures]
-    #         return walks
-
     
     def random_walk(self, n_random_steps, buffer = None, n_random_restarts = 0, return_trajectory=False):
         """ Starts a random walk to gather observations (s, a, r, s').
@@ -163,7 +83,7 @@ class BaseEnvironment(object):
         Params:
         ==========
             n_random_steps (int): number of steps for which we want the random walk to continue.
-            buffer (buffer/* instance): ReplayBuffer instance to collect memory.
+            buffer (buffer/* instance): if passed, a ReplayBuffer instance to collect memory.
             n_random_restarts (int): number of times we reset the agent to a random position during the walk.
             return_trajectory (bool): if True we return the trajectory followed by the agent.
         """
@@ -177,8 +97,11 @@ class BaseEnvironment(object):
         for step in range(1, n_random_steps+1):
             # random action
             action = np.vstack([random.choice(np.arange(self.config.action_size)) for _ in range(self.config.n_agents)])
-            # step the environment according to this random action (automatically stores (s, a, r ,s') to buffer)
-            _ = self.step(action, buffer)
+            # step the environment according to this random action
+            transition, next_slice = self.step(action)
+            # add (state, action, reward, next_state) to buffer
+            if buffer is not None:
+                buffer.add(*transition)
             # get the visual if needed
             if return_trajectory:
                 trajectory.append(self.state)
@@ -187,16 +110,6 @@ class BaseEnvironment(object):
                 self.reset()
         if return_trajectory:
             return trajectory
-
-    def render_light(self, states, fname):
-        """Lightweight rendering function for a given trajectory of states. only plots the CT slice.
-        """
-        # 1. sample the plane(s)
-        if isinstance(states, np.ndarray):
-            states = [states]
-        slices = [slice[..., np.newaxis]*np.ones(3) for slice in self.sample_planes(states)]
-        clip = ImageSequenceClip(slices, fps=10)
-        clip.write_gif(os.path.join(self.results_dir, fname+".gif"), fps=10)
 
     def save_frame_heavy(self, slice, state=None, seg=None, savepath="./sample.png"):
         """Renders a single state or many states. If many states it will use multiple processes.

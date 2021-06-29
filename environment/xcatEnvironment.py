@@ -1,10 +1,10 @@
 from environment.baseEnvironment import BaseEnvironment
+from environment.utils import get_plane_from_points
 from rewards.rewards import *
 import numpy as np
 import SimpleITK as sitk
 import os
-
-
+from moviepy.editor import ImageSequenceClip
 
 class SingleVolumeEnvironment(BaseEnvironment):
     def __init__(self, config, vol_id=0):
@@ -41,6 +41,10 @@ class SingleVolumeEnvironment(BaseEnvironment):
         Segmentation = sitk.GetArrayFromImage(itkSegmentation)
         self.Segmentation = Segmentation
 
+        # load a black cube to be popoulated with the position of the agent (state). Slicing through this cube
+        # will yield an image with the relative position of each agent within the slice.
+        self.black_cube = np.zeros((self.sx, self.sy, self.sz))
+
         # setup the reward function arguments:
         self.rewards = {"anatomyReward": AnatomyReward(config.anatomyRewardIDs),
                         "steppingReward": SteppingReward(config.steppingReward),
@@ -50,65 +54,49 @@ class SingleVolumeEnvironment(BaseEnvironment):
         # get starting configuration
         self.reset()
 
-
-
-    def sample_plane(self, state, return_seg=False, oob_black=True):
+    def sample_plane(self, state, return_seg=False, return_pos=False, oob_black=True):
         """ function to sample a plane from 3 3D points (state)
         Params:
         ==========
             state (np.ndarray of shape (3,3)): v-stacked 3D points that will define a particular plane in the CT volume.
             return_seg (bool): flag if we wish to return the corresponding segmentation map. (default=False)
+            return_pos (bool): flag if we want to return a 2D image embedding of the positions of the agents. (default=False)
             oob_black (bool): flack if we wish to mask out of volume pixels to black. (default=True)
 
             returns -> plane (torch.tensor of shape (1, 1, self.sy, self.sx)): corresponding plane sampled from the CT volume (normalized and unsqueezed to 4D)
                        seg (optional, np.ndarray of shape (self.sy, self.sx)): segmentation map of the sampled plane
         """
-        # get plane coefs
-        a,b,c,d = self.get_plane_coefs(*state)
-        # extract corresponding slice
-        main_ax = np.argmax([abs(a), abs(b), abs(c)])
-        if main_ax == 0:
-            Y, Z = np.meshgrid(np.arange(self.sy), np.arange(self.sz), indexing='ij')
-            X = (d - b * Y - c * Z) / a
-
-            X = X.round().astype(np.int)
-            P = X.copy()
-            S = self.sx-1
-
-            X[X <= 0] = 0
-            X[X >= self.sx] = self.sx-1
-
-        elif main_ax==1:
-            X, Z = np.meshgrid(np.arange(self.sx), np.arange(self.sz), indexing='ij')
-            Y = (d - a * X - c * Z) / b
-
-            Y = Y.round().astype(np.int)
-            P = Y.copy()
-            S = self.sy-1
-
-            Y[Y <= 0] = 0
-            Y[Y >= self.sy] = self.sy-1
-        
-        elif main_ax==2:
-            X, Y = np.meshgrid(np.arange(self.sx), np.arange(self.sy), indexing='ij')
-            Z = (d - a * X - b * Y) / c
-
-            Z = Z.round().astype(np.int)
-            P = Z.copy()
-            S = self.sz-1
-
-            Z[Z <= 0] = 0
-            Z[Z >= self.sz] = self.sz-1
-        
-        # sample plane from the current volume
-        plane = self.Volume[X, Y, Z]
-
+        # 1. extract plane specs
+        XYZ, P, S = get_plane_from_points(state, (self.sx, self.sy, self.sz))
+        # 2. sample plane from the current volume
+        X,Y,Z = XYZ
+        plane = self.Volume[X,Y,Z]
+        # mask out of boundary pixels to black
         if oob_black == True:
             plane[P < 0] = 0
             plane[P > S] = 0
-        
+        # 3. sample the segmentation if needed
         if return_seg:
-            return plane, self.Segmentation[X, Y, Z]
+            seg=self.Segmentation[X,Y,Z]
+        # 4. sample the 2D relative positions of the agents if needed
+        if return_pos:
+            # populate the black_box with the current state
+            for s in state:
+                if s[0]<self.sx and s[1]<self.sy and s[2]<self.sz:
+                    self.black_cube[s[0],s[1],s[2]] = 1
+            # sample the slice with agents positions
+            pos=self.black_cube[X,Y,Z]
+            # reset the black box to fully black
+            for s in state:
+                if s[0]<self.sx and s[1]<self.sy and s[2]<self.sz:
+                    self.black_cube[s[0],s[1],s[2]] = 0
+        
+        if return_seg and return_pos:
+            return plane, seg, pos
+        elif return_seg:
+            return plane, seg
+        elif return_pos:
+            return plane, pos
         else:
             return plane
 
@@ -148,6 +136,8 @@ class SingleVolumeEnvironment(BaseEnvironment):
         # log these rewards to the current episode count
         for r in rewards:
             self.logs[r]+=rewards[r]
+        # store the state in the visited states throughout the episode
+        self.visited_states.append(next_state)
         # update the current state
         self.state = next_state
         # return transition and the next_slice which has already been sampled
@@ -184,8 +174,43 @@ class SingleVolumeEnvironment(BaseEnvironment):
         self.state = np.vstack([pointA, pointB, pointC]).astype(np.int)
         # reset the logged rewards for this episode
         self.logs = {r: 0 for r in self.rewards}
+        # reset the visited states throughout the episode
+        self.visited_states = [self.state]
+
+    def render_current_trajectory(self, fname, with_seg=False, with_pos=True, fps=10):
+        # sample all needed planes along with needed segmentations or positions (multiple threads are launched)
+        results = self.sample_planes(self.visited_states, return_seg=with_seg, return_pos=with_pos)
+        # collect respective outputs
+        if with_seg and with_pos:
+            planes, segs, poss = list(zip(*results))
+        elif with_seg:
+            planes, segs = list(zip(*results))
+            poss = [None]*len(planes)
+        elif with_pos:
+            planes, poss = list(zip(*results))
+            segs = [None]*len(planes)
+        else:
+            planes = results
+            segs, poss = [None]*len(planes), [None]*len(planes)
+        
+        # build the rendered animation
+        frames = []
+        for plane, seg, pos in zip(planes, segs, poss):
+            # convert to RGB and compose the single frame
+            IMAGE = plane[..., np.newaxis]*np.ones(3)
+            if pos is not None:
+                pos = pos[..., np.newaxis]*np.ones(3)
+                IMAGE = np.hstack([IMAGE, pos])
+            if seg is not None:
+                seg = seg[..., np.newaxis]*np.ones(3)
+                IMAGE = np.hstack([IMAGE, seg])
+            frames.append(IMAGE)
+        # render the clip as a gif
+        clip = ImageSequenceClip(frames, fps=fps)
+        clip.write_gif(fname, fps=fps)
 
 # ==== HELPER FUNCTIONS ====
+
 def intensity_scaling(ndarr, pmin=None, pmax=None, nmin=None, nmax=None):
     pmin = pmin if pmin != None else ndarr.min()
     pmax = pmax if pmax != None else ndarr.max()
@@ -196,4 +221,4 @@ def intensity_scaling(ndarr, pmin=None, pmax=None, nmin=None, nmax=None):
     ndarr[ndarr>pmax] = pmax
     ndarr = (ndarr-pmin)/(pmax-pmin)
     ndarr = ndarr*(nmax-nmin)+nmin
-    return ndarr 
+    return ndarr

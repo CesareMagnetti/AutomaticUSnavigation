@@ -84,21 +84,15 @@ class Agent(BaseAgent):
         # reset env to a random initial slice
         env.reset()
         slice = env.sample_plane(env.state)
-        slices = []
         # play an episode greedily
         for _ in tqdm(range(1, steps+1), desc="testing..."):  
-            # save frame
-            slices.append(slice[..., np.newaxis]*np.ones(3))
             # get action from current state
             actions = self.act(slice, local_model)  
             # observe transition and next_slice
             transition, next_slice = env.step(actions)
             # set slice to next slice
             slice = next_slice
-        
-        # send logs to wandb and save trajectory
-        wandb.log({log+"_test": r for log,r in env.logs.items()}, commit=True)
-        return slices
+        return {log+"_test": r for log,r in env.logs.items()}
     
     def visualize_trajectory(self, slices, fname="test"):
         clip = ImageSequenceClip(slices, fps=10)

@@ -4,6 +4,73 @@ import numpy as np
 import functools
 import os
 
+# ==== THE FOLLOWING FUNCTION HANDLE 2D PLANE SAMPLING OF A 3D VOLUME ====
+
+def get_plane_coefs(p1, p2, p3):
+    """ Gets the coefficients of a 3D plane given the coordinates of 3 3D points
+    """
+    # These two vectors are in the plane
+    v1 = p3 - p1
+    v2 = p2 - p1
+    # the cross product is a vector normal to the plane
+    cp = np.cross(v1, v2)
+    a, b, c = cp
+    # This evaluates a * x3 + b * y3 + c * z3 which equals d
+    d = np.dot(cp, p3)
+    return a, b, c, d
+
+def get_plane_from_points(points, shape):
+        """ function to sample a plane from 3 3D points (state)
+        Params:
+        ==========
+            points (np.ndarray of shape (3,3)): v-stacked 3D points that will define a particular plane in the volume.
+            shape (np.ndarry): shape of the 3D volume to sample plane from
+
+            returns -> (X,Y,Z) ndarrays that will index Volume in order to extract a specific plane.
+        """
+        # get plane coefs
+        a,b,c,d = get_plane_coefs(*points)
+        # get volume shape
+        sx, sy, sz = shape
+        # extract corresponding slice
+        main_ax = np.argmax([abs(a), abs(b), abs(c)])
+        if main_ax == 0:
+            Y, Z = np.meshgrid(np.arange(sy), np.arange(sz), indexing='ij')
+            X = (d - b * Y - c * Z) / a
+
+            X = X.round().astype(np.int)
+            P = X.copy()
+            S = sx-1
+
+            X[X <= 0] = 0
+            X[X >= sx] = sx-1
+
+        elif main_ax==1:
+            X, Z = np.meshgrid(np.arange(sx), np.arange(sz), indexing='ij')
+            Y = (d - a * X - c * Z) / b
+
+            Y = Y.round().astype(np.int)
+            P = Y.copy()
+            S = sy-1
+
+            Y[Y <= 0] = 0
+            Y[Y >= sy] = sy-1
+        
+        elif main_ax==2:
+            X, Y = np.meshgrid(np.arange(sx), np.arange(sy), indexing='ij')
+            Z = (d - a * X - b * Y) / c
+
+            Z = Z.round().astype(np.int)
+            P = Z.copy()
+            S = sz-1
+
+            Z[Z <= 0] = 0
+            Z[Z >= sz] = sz-1
+        
+        return (X,Y,Z), P, S
+
+# ===== THE FOLLOWING FUNCTIONS HANDLE THE CYCLEGAN NETWORK INSTANCIATION AND WEIGHTS LOADING ====
+
 def get_model(name, use_cuda=False):
     # instanciate cyclegan architecture used in CT2UStransfer (this is also the default architecture recommended by the authors)
     model = JohnsonResnetGenerator(1, 1, 64, norm_layer=nn.InstanceNorm2d, use_dropout=False, n_blocks=9)
