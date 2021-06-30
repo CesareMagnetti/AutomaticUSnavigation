@@ -5,7 +5,6 @@ import functools
 import os
 
 # ==== THE FOLLOWING FUNCTION HANDLE 2D PLANE SAMPLING OF A 3D VOLUME ====
-
 def get_plane_coefs(p1, p2, p3):
     """ Gets the coefficients of a 3D plane given the coordinates of 3 3D points
     """

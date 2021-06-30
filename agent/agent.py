@@ -22,12 +22,12 @@ class Agent(BaseAgent):
         self.eps = self.config.eps_start
         # set the trainer algorithm
         if config.trainer.lower() in ["deepqlearning", "qlearning", "dqn"]:
-            if config.beta>0:
+            if config.alpha>0:
                 self.trainer = PrioritizedDeepQLearning(gamma=config.gamma)
             else:
                 self.trainer = DeepQLearning(gamma=config.gamma)
         elif config.trainer.lower() in ["doubledeepqlearning", "doubleqlearning", "doubledqn", "ddqn"]:
-            if config.beta>0:
+            if config.alpha>0:
                 self.trainer = PrioritizedDoubleDeepQLearning(gamma=config.gamma)
             else:
                 self.trainer = DoubleDeepQLearning(gamma=config.gamma)
@@ -73,34 +73,33 @@ class Agent(BaseAgent):
         return logs
 
     def test_agent(self, steps, env, local_model):
-        """Test the greedy policy learned by the agent, saves the trajectory as a GIF and logs collected reward to wandb.
+        """Test the greedy policy learned by the agent and returns a dict with useful metrics/logs.
         Params:
         ==========
             steps (int): number of steps to test the agent for.
             env (environment/* instance): the environment the agent will interact with while testing.
             local_model (PyTorch model): pytorch network that will be tested.
-            fname (str): name of file to save (default = test)
         """
+        out = {"frames": [], "states": [], "logs": []}
         # reset env to a random initial slice
         env.reset()
-        slice = env.sample_plane(env.state)
+        frame = env.sample_plane(env.state)
         # play an episode greedily
-        for _ in tqdm(range(1, steps+1), desc="testing..."):  
+        for _ in tqdm(range(1, steps+1), desc="testing..."):
+            # add to output dict  
+            out["frames"].append(frame)
+            out["states"].append(env.state)
+            out["logs"].append({log: r for log,r in env.logs.items()})
             # get action from current state
-            actions = self.act(slice, local_model)  
+            actions = self.act(frame, local_model)  
             # observe transition and next_slice
-            transition, next_slice = env.step(actions)
+            transition, next_frame = env.step(actions)
             # set slice to next slice
-            slice = next_slice
-        return {log+"_test": r for log,r in env.logs.items()}
-    
-    def visualize_trajectory(self, slices, fname="test"):
-        clip = ImageSequenceClip(slices, fps=10)
-        if not os.path.exists(os.path.join(self.results_dir, "visuals")):
-            os.makedirs(os.path.join(self.results_dir, "visuals"))
-        clip.write_gif(os.path.join(self.results_dir, "visuals", fname+".gif"), fps=10)
-        wandb.save(os.path.join(self.results_dir, "visuals", fname+".gif"))
-    
+            frame = next_frame
+        # add logs for wandb to out
+        out["wandb"] = {log+"_test": r for log,r in env.logs.items()}
+        return out
+        
     def learn(self, env, buffer, local_model, target_model, optimizer, criterion):
         """ Update value parameters using given batch of experience tuples.
         Params:
@@ -114,7 +113,7 @@ class Agent(BaseAgent):
             criterion (PyTorch Module): loss to minimize in order to train the local network.
         """  
         # 1. organize batch
-        if self.config.beta > 0: # if prioritized learning we also return the bias correction weights and the priorities indices to update
+        if self.config.alpha > 0: # if prioritized learning we also return the bias correction weights and the priorities indices to update
             batch, weights, indices = buffer.sample(beta=self.config.beta)
         else:
             batch = buffer.sample()
@@ -123,12 +122,12 @@ class Agent(BaseAgent):
         # concatenate and move to gpu
         states = torch.from_numpy(np.vstack(planes[:self.config.batch_size])).float().to(self.config.device)
         next_states = torch.from_numpy(np.vstack(planes[self.config.batch_size:])).float().to(self.config.device)
-        rewards = torch.tensor(rewards).float().to(self.config.device)
+        rewards = torch.from_numpy(np.hstack(rewards)).unsqueeze(-1).float().to(self.config.device)
         actions = torch.from_numpy(np.hstack(actions)).unsqueeze(-1).long().to(self.config.device)
         batch = (states, actions, rewards, next_states)
         # 2. make a training step (retain graph because we will backprop multiple times through the backbone cnn)
         optimizer.zero_grad()
-        if self.config.beta > 0: # if prioritized learning we need to modify buffer prioritises as we train
+        if self.config.alpha > 0: # if prioritized learning we need to modify buffer prioritises as we train
             loss = self.trainer.step(batch, local_model, target_model, criterion, buffer, weights, indices)
         else:
             loss = self.trainer.step(batch, local_model, target_model, criterion)

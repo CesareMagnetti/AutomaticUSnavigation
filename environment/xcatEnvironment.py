@@ -41,29 +41,32 @@ class SingleVolumeEnvironment(BaseEnvironment):
         Segmentation = sitk.GetArrayFromImage(itkSegmentation)
         self.Segmentation = Segmentation
 
-        # load a black cube to be popoulated with the position of the agent (state). Slicing through this cube
-        # will yield an image with the relative position of each agent within the slice.
-        self.black_cube = np.zeros((self.sx, self.sy, self.sz))
-
-        # setup the reward function arguments:
-        self.rewards = {"anatomyReward": AnatomyReward(config.anatomyRewardIDs),
-                        "steppingReward": SteppingReward(config.steppingReward),
-                        "areaReward": AreaReward(config.areaRewardWeight, self.sx*self.sy),
-                        "oobReward":OutOfBoundaryReward(config.oobReward, self.sx, self.sy, self.sz)}
+        # setup the reward function handling:
+        self.logged_rewards = ["anatomyReward"]
+        self.rewards = {"anatomyReward": AnatomyReward(config.anatomyRewardIDs)}
+        if abs(config.steppingReward) > 0:
+            self.logged_rewards.append("steppingReward")
+            self.rewards["steppingReward"] = SteppingReward(config.steppingReward)
+        if abs(config.areaRewardWeight) > 0:
+            self.logged_rewards.append("areaReward")
+            self.rewards["areaReward"] = AreaReward(config.areaRewardWeight, self.sx*self.sy)
+        if abs(config.areaRewardWeight) > 0:
+            for i in range(config.n_agents):
+                self.logged_rewards.append("oobReward_%d"%(i+1))
+            self.rewards["oobReward"] = OutOfBoundaryReward(config.oobReward, self.sx, self.sy, self.sz)
         
         # get starting configuration
         self.reset()
 
-    def sample_plane(self, state, return_seg=False, return_pos=False, oob_black=True):
+    def sample_plane(self, state, return_seg=False, oob_black=True):
         """ function to sample a plane from 3 3D points (state)
         Params:
         ==========
             state (np.ndarray of shape (3,3)): v-stacked 3D points that will define a particular plane in the CT volume.
             return_seg (bool): flag if we wish to return the corresponding segmentation map. (default=False)
-            return_pos (bool): flag if we want to return a 2D image embedding of the positions of the agents. (default=False)
             oob_black (bool): flack if we wish to mask out of volume pixels to black. (default=True)
 
-            returns -> plane (torch.tensor of shape (1, 1, self.sy, self.sx)): corresponding plane sampled from the CT volume (normalized and unsqueezed to 4D)
+            returns -> plane (torch.tensor of shape (1, 1, self.sy, self.sx)): corresponding plane sampled from the CT volume
                        seg (optional, np.ndarray of shape (self.sy, self.sx)): segmentation map of the sampled plane
         """
         # 1. extract plane specs
@@ -77,26 +80,7 @@ class SingleVolumeEnvironment(BaseEnvironment):
             plane[P > S] = 0
         # 3. sample the segmentation if needed
         if return_seg:
-            seg=self.Segmentation[X,Y,Z]
-        # 4. sample the 2D relative positions of the agents if needed
-        if return_pos:
-            # populate the black_box with the current state
-            for s in state:
-                if s[0]<self.sx and s[1]<self.sy and s[2]<self.sz:
-                    self.black_cube[s[0],s[1],s[2]] = 1
-            # sample the slice with agents positions
-            pos=self.black_cube[X,Y,Z]
-            # reset the black box to fully black
-            for s in state:
-                if s[0]<self.sx and s[1]<self.sy and s[2]<self.sz:
-                    self.black_cube[s[0],s[1],s[2]] = 0
-        
-        if return_seg and return_pos:
-            return plane, seg, pos
-        elif return_seg:
-            return plane, seg
-        elif return_pos:
-            return plane, pos
+            return plane, self.Segmentation[X,Y,Z]
         else:
             return plane
 
@@ -106,18 +90,37 @@ class SingleVolumeEnvironment(BaseEnvironment):
         ==========
             seg (np.ndarray of shape (self.sy, self.sx)): segmentation map from which to extract the reward.
             state (np.ndarray): 3 stacked 3D arrays representing the coordinates of the agent.
-        Returns -> rewards (dict): the corresponding rewards collected by the agent.
+        Returns -> rewards (dict): the corresponding rewards collected by the agents.
         """
-        rewards = {}
-        # 1 reward given that we are slicing the right anatomical content.
-        rewards["anatomyReward"] = self.rewards["anatomyReward"](seg)
-        # 2 reward given upon stepping in a new state (only if there is no content of interest in the slice).
-        rewards["steppingReward"] = self.rewards["steppingReward"](not rewards["anatomyReward"]>0)
-        # 3 reward agents to be spreaded out rather homogeneously across the volume (not clustered).
-        rewards["areaReward"] = self.rewards["areaReward"](state)
-        # 4 give penalties when the agents move outside the volume.
-        rewards["oobReward"] = self.rewards["oobReward"](state)
-        return rewards
+        shared_rewards = {}
+        single_rewards = {}
+        for key, func in self.rewards.items():
+            if key == "anatomyReward":
+                # this will contain a single reward for all agents
+                shared_rewards["anatomyReward"] = func(seg)               
+            elif key == "steppingReward":
+                # this will contain a single reward for all agents
+                shared_rewards["steppingReward"] = func(not shared_rewards["anatomyReward"]>0)
+            elif key == "areaReward":
+                # this will contain a single reward for all agents
+                shared_rewards["areaReward"] = func(state)
+            elif key == "oobReward":
+                # this will contain a reward for each agent
+                for i, point in enumerate(state):
+                    single_rewards["oobReward_%d"%(i+1)] = func(point)  
+
+        # extract total rewards of each agent
+        total_rewards = [sum(shared_rewards.values())]*self.config.n_agents
+        if "oobReward" in self.rewards:
+            for i in range(self.config.n_agents):
+                total_rewards[i]+=single_rewards["oobReward_%d"%(i+1)]
+        total_rewards = np.array(total_rewards)
+    
+        # log these rewards to the current episode count
+        shared_rewards.update(single_rewards)
+        for r in self.logged_rewards:
+            self.logs[r]+=shared_rewards[r]   
+        return total_rewards[..., np.newaxis].astype(np.float)
 
     def step(self, action):
         """Perform an input action (discrete action), observe the next state and reward.
@@ -133,15 +136,10 @@ class SingleVolumeEnvironment(BaseEnvironment):
         # observe the next plane and get the reward from segmentation map
         next_slice, segmentation = self.sample_plane(state=next_state, return_seg=True)
         rewards = self.get_reward(segmentation, next_state)
-        # log these rewards to the current episode count
-        for r in rewards:
-            self.logs[r]+=rewards[r]
-        # store the state in the visited states throughout the episode
-        self.visited_states.append(next_state)
         # update the current state
         self.state = next_state
         # return transition and the next_slice which has already been sampled
-        return (state, action, sum(rewards.values()), next_state), next_slice
+        return (state, action, rewards, next_state), next_slice
     
     def reset(self):
         # sample a random plane (defined by 3 points) to start the episode from
@@ -173,41 +171,8 @@ class SingleVolumeEnvironment(BaseEnvironment):
         # stack points to define the state
         self.state = np.vstack([pointA, pointB, pointC]).astype(np.int)
         # reset the logged rewards for this episode
-        self.logs = {r: 0 for r in self.rewards}
-        # reset the visited states throughout the episode
-        self.visited_states = [self.state]
+        self.logs = {r: 0 for r in self.logged_rewards}
 
-    def render_current_trajectory(self, fname, with_seg=False, with_pos=True, fps=10):
-        # sample all needed planes along with needed segmentations or positions (multiple threads are launched)
-        results = self.sample_planes(self.visited_states, return_seg=with_seg, return_pos=with_pos)
-        # collect respective outputs
-        if with_seg and with_pos:
-            planes, segs, poss = list(zip(*results))
-        elif with_seg:
-            planes, segs = list(zip(*results))
-            poss = [None]*len(planes)
-        elif with_pos:
-            planes, poss = list(zip(*results))
-            segs = [None]*len(planes)
-        else:
-            planes = results
-            segs, poss = [None]*len(planes), [None]*len(planes)
-        
-        # build the rendered animation
-        frames = []
-        for plane, seg, pos in zip(planes, segs, poss):
-            # convert to RGB and compose the single frame
-            IMAGE = plane[..., np.newaxis]*np.ones(3)
-            if pos is not None:
-                pos = pos[..., np.newaxis]*np.ones(3)
-                IMAGE = np.hstack([IMAGE, pos])
-            if seg is not None:
-                seg = seg[..., np.newaxis]*np.ones(3)
-                IMAGE = np.hstack([IMAGE, seg])
-            frames.append(IMAGE)
-        # render the clip as a gif
-        clip = ImageSequenceClip(frames, fps=fps)
-        clip.write_gif(fname, fps=fps)
 
 # ==== HELPER FUNCTIONS ====
 

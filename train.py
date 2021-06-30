@@ -3,6 +3,7 @@ from agent.agent import Agent
 from networks.Qnetworks import setup_networks
 from buffer.buffer import *
 from options.options import gather_options, print_options
+from visualisation.visualizers import Visualizer
 from tqdm import tqdm
 import torch, os, wandb
 import torch.optim as optim
@@ -42,7 +43,9 @@ def train(config, local_model, target_model, rank=0):
                 buffer = PrioritizedReplayBuffer(config.buffer_size, config.batch_size, config.alpha)
         else:
                 buffer = ReplayBuffer(config.buffer_size, config.batch_size)
-        
+        # 6. instanciate visualizer
+        visualizer = Visualizer()
+
         # ==== LAUNCH TRAINING ====
 
         # 1. launch exploring steps if needed
@@ -71,14 +74,12 @@ def train(config, local_model, target_model, rank=0):
                         local_model.save(os.path.join(agent.checkpoints_dir, "latest.pth"))
                         target_model.save(os.path.join(agent.checkpoints_dir, "episode%d.pth"%episode))
                         # test the greedy policy and send logs
-                        logs_test = agent.test_agent(config.n_steps_per_episode, env, local_model)
-                        wandb.log(logs_test, step=agent.t_step, commit=True)
+                        out = agent.test_agent(config.n_steps_per_episode, env, local_model)
+                        wandb.log(out["wandb"], step=agent.t_step, commit=True)
                         # plot the trajectory followed by the agent in the current episode
                         fname = os.path.join(agent.results_dir, "visuals", "episode%d.gif"%episode)
-                        env.render_current_trajectory(fname = fname)
+                        visualizer.render_frames(out["frames"], fname)
                         wandb.save(fname)
-
-
 
 if __name__=="__main__":
 
