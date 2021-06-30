@@ -46,7 +46,6 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         # 1. add to experience
         super(PrioritizedReplayBuffer, self).add(state, action, reward, next_state)
         # 2. add to buffer with max probability to incentivize exploration of new transitions
-        print(len(self.priorities), self.priorities)
         max_prio = max(self.priorities) if len(self.priorities)>0 else 1.0
         self.priorities.append(max_prio)
     
@@ -67,5 +66,6 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         return batch, weights, indices
     
     def update_priorities(self, batch_indices, batch_priorities):
+        print(batch_priorities.shape, len(batch_indices))
         for idx, prio in zip(batch_indices, batch_priorities):
             self.priorities[idx] = prio

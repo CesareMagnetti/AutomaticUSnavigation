@@ -115,6 +115,7 @@ class Agent(BaseAgent):
         # 1. organize batch
         if self.config.alpha > 0: # if prioritized learning we also return the bias correction weights and the priorities indices to update
             batch, weights, indices = buffer.sample(beta=self.config.beta)
+            weights = torch.from_numpy(weights).float().squeeze().to(self.config.device)
         else:
             batch = buffer.sample()
         states, actions, rewards, next_states = batch

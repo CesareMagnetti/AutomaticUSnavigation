@@ -32,21 +32,24 @@ class DeepQLearning():
         Qtarget = target_model(next_states)
         # 3. evaluate the loss (TDerror) for each head, launch in parallel for efficiency, aggregate each loss by summation
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            futures = [executor.submit(self.single_head_loss, q, q_target, act, rewards, criterion) for q, q_target, act in zip(Q, Qtarget, actions)]
+            futures = [executor.submit(self.single_head_loss, q, q_target, act, r, criterion) for q, q_target, act, r in zip(Q, Qtarget, actions, rewards)]
         # 4. aggregate the losses of each head and average across batch
         loss = sum([f.result() for f in futures])
-        return loss.mean()
+        return loss
 
     def single_head_loss(self, Q, Qtarget, actions, rewards, criterion):
         # 1. gather the values of the action taken
-        Q = Q.gather(1, actions).squeeze()
+        Qa = Q.gather(1, actions).squeeze()
         # 2. get the target value of the greedy action at the next state
         MaxQ = Qtarget.max(1)[0].detach()
         # 3. backup the expected value of this action by bootstrapping on the greedy value of the next state
-        Qhat = rewards + self.gamma*MaxQ
+        Qhat = rewards.squeeze() + self.gamma*MaxQ
         # 4. evalauate TD error as a fit function for the netwrok
-        loss = criterion(Q, Qhat)
-        return loss
+        loss = criterion(Qa, Qhat)
+        # print("Q: ", Q.shape, "Qtarget: ", Qtarget.shape, "actions: ", actions.shape, "rewards: ", rewards.shape)
+        # print("Qa: ", Qa.shape, "MaxQ: ", MaxQ.shape, "Qhat: ", Qhat.shape)
+        # print("loss: ", loss.shape)
+        return loss.mean()
 
 
 class DoubleDeepQLearning():
@@ -81,22 +84,25 @@ class DoubleDeepQLearning():
         Qtarget_next = target_model(next_states)
         # 3. evaluate the loss (TDerror) for each head, launch in parallel for efficiency, aggregate each loss by summation
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            futures = [executor.submit(self.single_head_loss, q, q_next, q_target_next, act, rewards, criterion) for q, q_next, q_target_next, act in zip(Q, Q_next, Qtarget_next, actions)]
+            futures = [executor.submit(self.single_head_loss, q, q_next, q_target_next, act, r, criterion) for q, q_next, q_target_next, act, r in zip(Q, Q_next, Qtarget_next, actions, rewards)]
         # 4. aggregate the losses of each head and average across batch
         loss = sum([f.result() for f in futures])
-        return loss.mean()
+        return loss
 
     def single_head_loss(self, Q, Q_next, Qtarget_next, actions, rewards, criterion):
         # 1. gather Q values for the actions taken at the current state
         Qa = Q.gather(1, actions).squeeze()
         # 2. get the discrete action that maximizes the target value at the next state
-        a_next = Q_next.max(1)[1].unsqueeze(0)
+        a_next = Q_next.max(1)[1].unsqueeze(-1)
         Qa_next = Qtarget_next.gather(1, a_next).detach().squeeze()
         # 3. backup the expected value of this action by bootstrapping on the greedy value of the next state
-        Qhat = rewards + self.gamma*Qa_next
+        Qhat = rewards.squeeze() + self.gamma*Qa_next
         # 4. evalauate TD error as a fit function for the network
         loss = criterion(Qa, Qhat)
-        return loss
+        # print("Q: ", Q.shape, "Q_next: ", Q_next.shape, "Qtarget_next: ", Qtarget_next.shape, "actions: ", actions.shape, "rewards: ", rewards.shape)
+        # print("Qa: ", Qa.shape, "a_next: ", a_next.shape, "Qa_next: ", Qa_next.shape, "Qhat: ", Qhat.shape)
+        # print("loss: ", loss.shape)
+        return loss.mean()
 
 class PrioritizedDeepQLearning():
     def __init__(self, gamma):
@@ -132,26 +138,29 @@ class PrioritizedDeepQLearning():
         Qtarget = target_model(next_states)
         # 3. evaluate the loss (TDerror) for each head, launch in parallel for efficiency, aggregate each loss by summation
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            futures = [executor.submit(self.single_head_loss, q, q_target, act, rewards, criterion) for q, q_target, act in zip(Q, Qtarget, actions)]
+            futures = [executor.submit(self.single_head_loss, q, q_target, act, r, criterion, weights) for q, q_target, act, r in zip(Q, Qtarget, actions, rewards)]
         # 4. aggregate the deltas of each head and update buffer priorities
         deltas = sum([f.result()[1] for f in futures])
         buffer.update_priorities(indices, deltas.cpu().detach().numpy().squeeze())
         # 5. aggregate the losses of each head and average across batch
         loss = sum([f.result()[0] for f in futures])
-        return loss.mean()
+        return loss
 
     def single_head_loss(self, Q, Qtarget, actions, rewards, criterion, weights):
         # 1. gather the values of the action taken
-        Q = Q.gather(1, actions).squeeze()
+        Qa = Q.gather(1, actions).squeeze()
         # 2. get the target value of the greedy action at the next state
         MaxQ = Qtarget.max(1)[0].detach()
         # 3. backup the expected value of this action by bootstrapping on the greedy value of the next state
-        Qhat = rewards + self.gamma*MaxQ
+        Qhat = rewards.squeeze() + self.gamma*MaxQ
         # 4. evalauate TD error as a fit function for the netwrok
-        loss = criterion(Q, Qhat)*weights
+        loss = criterion(Qa, Qhat)*weights
         # 5. deltas to update priorities
-        deltas = torch.abs(Q-Qhat)+1e-5
-        return (loss, deltas)
+        deltas = torch.abs(Qa-Qhat)+1e-5
+        # print("Q: ", Q.shape, "Qtarget: ", Qtarget.shape, "actions: ", actions.shape, "rewards: ", rewards.shape, "weights: ", weights.shape)
+        # print("Qa: ", Qa.shape, "MaxQ: ", MaxQ.shape, "Qhat: ", Qhat.shape)
+        # print("loss: ", loss.shape, "deltas: ", deltas.shape)
+        return (loss.mean(), deltas)
 
 class PrioritizedDoubleDeepQLearning():
     def __init__(self, gamma):
@@ -186,26 +195,30 @@ class PrioritizedDoubleDeepQLearning():
         Q = local_model(states)
         Q_next = local_model(next_states)
         Qtarget_next = target_model(next_states)
-        # 3. evaluate the loss (TDerror) for each head, launch in parallel for efficiency, aggregate each loss by summation
+        # 3. evaluate the loss (TDerror) for each head, launch in parallel for efficiency, aggregate each loss by summation.
+        # each head will have its Q values, its actions and its rewards. Each head will share the same optimizing criterion.
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            futures = [executor.submit(self.single_head_loss, q, q_next, q_target_next, act, rewards, criterion) for q, q_next, q_target_next, act in zip(Q, Q_next, Qtarget_next, actions)]
+            futures = [executor.submit(self.single_head_loss, q, q_next, q_target_next, act, r, criterion, weights) for q, q_next, q_target_next, act, r in zip(Q, Q_next, Qtarget_next, actions, rewards)]
         # 4. aggregate the deltas of each head and update buffer priorities
         deltas = sum([f.result()[1] for f in futures])
         buffer.update_priorities(indices, deltas.cpu().detach().numpy().squeeze())
         # 5. aggregate the losses of each head and average across batch
         loss = sum([f.result()[0] for f in futures])
-        return loss.mean()
+        return loss
 
-    def single_head_loss(self, Q, Q_next, Qtarget_next, actions, rewards, criterion):
+    def single_head_loss(self, Q, Q_next, Qtarget_next, actions, rewards, criterion, weights):
         # 1. gather Q values for the actions taken at the current state
         Qa = Q.gather(1, actions).squeeze()
         # 2. get the discrete action that maximizes the target value at the next state
-        a_next = Q_next.max(1)[1].unsqueeze(0)
+        a_next = Q_next.max(1)[1].unsqueeze(-1)
         Qa_next = Qtarget_next.gather(1, a_next).detach().squeeze()
         # 3. backup the expected value of this action by bootstrapping on the greedy value of the next state
-        Qhat = rewards + self.gamma*Qa_next
+        Qhat = rewards.squeeze() + self.gamma*Qa_next
         # 4. evalauate TD error as a fit function for the network
-        loss = criterion(Qa, Qhat)
+        loss = criterion(Qa, Qhat)*weights
         # 5. deltas to update priorities
         deltas = torch.abs(Qa-Qhat)+1e-5
-        return (loss, deltas)
+        # print("Q: ", Q.shape, "Q_next: ", Q_next.shape, "Qtarget_next: ", Qtarget_next.shape, "actions: ", actions.shape, "rewards: ", rewards.shape, "weights: ", weights.shape)
+        # print("Qa: ", Qa.shape, "a_next: ", a_next.shape, "Qa_next: ", Qa_next.shape, "Qhat: ", Qhat.shape)
+        # print("loss: ", loss.shape, "deltas: ", deltas.shape)
+        return (loss.mean(), deltas)

@@ -66,17 +66,18 @@ def train(config, local_model, target_model, rank=0):
                 logs = agent.play_episode(env, local_model, target_model, optimizer, criterion, buffer)
                 # send logs to weights and biases
                 if episode % config.log_freq == 0:
-                        wandb.log(logs, step=agent.t_step, commit=True)
+                        wandb.log(logs, commit=True)
                 # save agent locally and test its current greedy policy
                 if episode % config.save_freq == 0:
-                        print("length buffer: ", len(buffer))
                         print("saving latest model weights...")
                         local_model.save(os.path.join(agent.checkpoints_dir, "latest.pth"))
                         target_model.save(os.path.join(agent.checkpoints_dir, "episode%d.pth"%episode))
                         # test the greedy policy and send logs
                         out = agent.test_agent(config.n_steps_per_episode, env, local_model)
-                        wandb.log(out["wandb"], step=agent.t_step, commit=True)
+                        wandb.log(out["wandb"], commit=True)
                         # plot the trajectory followed by the agent in the current episode
+                        if not os.path.exists(os.path.join(agent.results_dir, "visuals")):
+                                os.makedirs(os.path.join(agent.results_dir, "visuals"))
                         fname = os.path.join(agent.results_dir, "visuals", "episode%d.gif"%episode)
                         visualizer.render_frames(out["frames"], fname)
                         wandb.save(fname)
