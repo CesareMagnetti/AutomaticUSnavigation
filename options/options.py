@@ -29,7 +29,7 @@ def gather_options(phase="train"):
     parser.add_argument('--n_blocks_Q', type=int, default=6, help="number of convolutional blocks in the Qnetwork.")
     parser.add_argument('--downsampling_Q', type=int, default=2, help="downsampling factor of each convolutional layer of the Qnetwork.")
     parser.add_argument('--n_features_Q', type=int, default=4, help="number of features in the first convolutional layer of the Qnetwork.")
-    parser.add_argument('--dropout_Q', action='store_true', help="if use dropout in the Qnetwork (p=0.5 after conv layers and p=0.1 after linear layers).")
+    parser.add_argument('--dropout_Q', type=bool, default=False, help="if use dropout in the Qnetwork (p=0.5 after conv layers and p=0.1 after linear layers).")
 
     # agent specs
     parser.add_argument('--action_size', type=int, default=7, help="how many action can a single agent perform.\n(i.e. up/down,left/right,forward/backwards,do nothing = 7 in a 3D volume).")
