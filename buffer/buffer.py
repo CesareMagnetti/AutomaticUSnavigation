@@ -66,6 +66,5 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         return batch, weights, indices
     
     def update_priorities(self, batch_indices, batch_priorities):
-        print(batch_priorities.shape, len(batch_indices))
         for idx, prio in zip(batch_indices, batch_priorities):
             self.priorities[idx] = prio

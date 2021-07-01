@@ -77,18 +77,15 @@ class BaseEnvironment(object):
             planes = [p[np.newaxis, np.newaxis, ...]/255 for p in planes]
         return planes
     
-    def random_walk(self, n_random_steps, buffer = None, n_random_restarts = 0, return_trajectory=False):
+    def random_walk(self, n_random_steps, buffer = None, return_trajectory=False):
         """ Starts a random walk to gather observations (s, a, r, s').
         Will return the number of unique states reached by each agent to quantify the amount of exploration
         Params:
         ==========
             n_random_steps (int): number of steps for which we want the random walk to continue.
             buffer (buffer/* instance): if passed, a ReplayBuffer instance to collect memory.
-            n_random_restarts (int): number of times we reset the agent to a random position during the walk.
             return_trajectory (bool): if True we return the trajectory followed by the agent.
         """
-        # get how many steps to do before each restart
-        restart_freq = int(n_random_steps/(n_random_restarts+1))
         # get the trajectory if needed
         if return_trajectory:
             trajectory = []
@@ -105,8 +102,8 @@ class BaseEnvironment(object):
             # get the visual if needed
             if return_trajectory:
                 trajectory.append(self.state)
-            # restart environment if needed
-            if step % restart_freq == 0:
+            # restart environment after max steps per episode are reached
+            if step % self.config.n_steps_per_episode == 0:
                 self.reset()
         if return_trajectory:
             return trajectory

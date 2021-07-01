@@ -39,10 +39,7 @@ def train(config, local_model, target_model, rank=0):
         else:
                 raise ValueError()
         # 5. instanciate replay buffer
-        if config.alpha>0:
-                buffer = PrioritizedReplayBuffer(config.buffer_size, config.batch_size, config.alpha)
-        else:
-                buffer = ReplayBuffer(config.buffer_size, config.batch_size)
+        buffer = PrioritizedReplayBuffer(config.buffer_size, config.batch_size, config.alpha)
         # 6. instanciate visualizer
         visualizer = Visualizer()
 
@@ -51,7 +48,7 @@ def train(config, local_model, target_model, rank=0):
         # 1. launch exploring steps if needed
         if agent.config.exploring_steps>0:
                 print("random walk to collect experience...")
-                env.random_walk(config.exploring_steps, buffer, config.exploring_restarts)  
+                env.random_walk(config.exploring_steps, buffer)  
         # 2. initialize wandb for logging purposes
         if config.wandb in ["online", "offline"]:
                 wandb.login()

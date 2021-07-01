@@ -20,17 +20,18 @@ class Agent(BaseAgent):
         self.t_step, self.episode = 0, 0
         # starting epsilon value for exploration/exploitation trade off
         self.eps = self.config.eps_start
+        # formulate a suitable decay factor for epsilon given the queried options.
+        self.EPS_DECAY_FACTOR = (config.eps_end/config.eps_start)**(1/int(config.stop_decay*config.n_episodes))
+        # starting beta value for bias correction in prioritized experience replay
+        self.beta = self.config.beta_start
+        # formulate a suitable decay factor for beta given the queried options. (since beta_end>beta_start, this will actually be an increase factor)
+        # annealiate beta to 1 (or beta_end) as we go further in the episode (original P.E.R paper reccommends this)
+        self.BETA_DECAY_FACTOR = (config.beta_end/config.beta_start)**(1/int(config.stop_decay*config.n_episodes))
         # set the trainer algorithm
         if config.trainer.lower() in ["deepqlearning", "qlearning", "dqn"]:
-            if config.alpha>0:
-                self.trainer = PrioritizedDeepQLearning(gamma=config.gamma)
-            else:
-                self.trainer = DeepQLearning(gamma=config.gamma)
+            self.trainer = PrioritizedDeepQLearning(gamma=config.gamma)
         elif config.trainer.lower() in ["doubledeepqlearning", "doubleqlearning", "doubledqn", "ddqn"]:
-            if config.alpha>0:
-                self.trainer = PrioritizedDoubleDeepQLearning(gamma=config.gamma)
-            else:
-                self.trainer = DoubleDeepQLearning(gamma=config.gamma)
+            self.trainer = PrioritizedDoubleDeepQLearning(gamma=config.gamma)
         else:
             raise NotImplementedError('unknown ``trainer`` configuration: {}. available options: [DQN, DoubleDQN]'.format(config.trainer))
 
@@ -66,10 +67,10 @@ class Agent(BaseAgent):
             slice= next_slice
         # return episode logs
         logs = env.logs
-        logs["loss"] = episode_loss
-        logs["epsilon"] = self.eps
+        logs.update({"loss": episode_loss, "epsilon": self.eps, "beta": self.beta})
         # decrease eps
         self.eps = max(self.eps*self.EPS_DECAY_FACTOR, self.config.eps_end)
+        self.beta = min(self.beta*self.BETA_DECAY_FACTOR, self.config.beta_end)
         return logs
 
     def test_agent(self, steps, env, local_model):
@@ -113,11 +114,8 @@ class Agent(BaseAgent):
             criterion (PyTorch Module): loss to minimize in order to train the local network.
         """  
         # 1. organize batch
-        if self.config.alpha > 0: # if prioritized learning we also return the bias correction weights and the priorities indices to update
-            batch, weights, indices = buffer.sample(beta=self.config.beta)
-            weights = torch.from_numpy(weights).float().squeeze().to(self.config.device)
-        else:
-            batch = buffer.sample()
+        batch, weights, indices = buffer.sample(beta=self.beta)
+        weights = torch.from_numpy(weights).float().squeeze().to(self.config.device)
         states, actions, rewards, next_states = batch
         planes = env.sample_planes(states+next_states, process=True)
         # concatenate and move to gpu
@@ -128,10 +126,7 @@ class Agent(BaseAgent):
         batch = (states, actions, rewards, next_states)
         # 2. make a training step (retain graph because we will backprop multiple times through the backbone cnn)
         optimizer.zero_grad()
-        if self.config.alpha > 0: # if prioritized learning we need to modify buffer prioritises as we train
-            loss = self.trainer.step(batch, local_model, target_model, criterion, buffer, weights, indices)
-        else:
-            loss = self.trainer.step(batch, local_model, target_model, criterion)
+        loss = self.trainer.step(batch, local_model, target_model, criterion, buffer, weights, indices)
         loss.backward(retain_graph=True)
         optimizer.step()
         # 3. update target network
@@ -141,5 +136,4 @@ class Agent(BaseAgent):
             self.hard_update(local_model, target_model, self.config.delay_steps)
         else:
             raise ValueError('unknown ``self.target_update``: {}. possible options: [hard, soft]'.format(self.config.target_update))   
-
         return loss.item()              

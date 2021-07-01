@@ -24,8 +24,6 @@ class BaseAgent(object):
             os.makedirs(self.results_dir)
         # setup the action size and the number of agents
         self.n_agents, self.action_size = config.n_agents, config.action_size
-        # formulate a suitable decay factor for epsilon given the queried options.
-        self.EPS_DECAY_FACTOR = (config.eps_end/config.eps_start)**(1/int(config.stop_eps_decay*config.n_episodes))
         # save the config for any options we might need
         self.config = config
     
