@@ -1,5 +1,5 @@
 from environment.baseEnvironment import BaseEnvironment
-from environment.utils import get_plane_from_points
+from utils import get_plane_from_points
 from rewards.rewards import *
 import numpy as np
 import SimpleITK as sitk

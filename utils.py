@@ -68,6 +68,30 @@ def get_plane_from_points(points, shape):
         
         return (X,Y,Z), P, S
 
+def convertCoordinates3Dto2D(p1, p2, p3, origin = None):
+        """ defines the 2D plane, the basis vectors of the 2D coord systems and the origin of the new coord system.
+        """
+        # These two vectors are in the plane
+        v1 = p3 - p1
+        v2 = p2 - p1
+        # the cross product is a vector normal to the plane
+        n = np.cross(v1, v2)
+        # define first basis vector
+        ex = np.cross(n, ex)/np.linalg.norm(np.cross(v1, n))
+        # define the second basis vector
+        ey = np.cross(n, ex)/np.linalg.norm(np.cross(n, ex))
+        # we define the origin
+        if origin is None:
+            origin = np.array([0., 0., 0.])
+        # convert the three points
+        _out = []
+        for point in [p1, p2, p3]:
+            x = np.dot(point - origin, ex)
+            y = np.dot(point - origin, ey)
+            _out.append(np.array([x, y]))
+        # return new 2D state representation
+        return np.vstack(_out)
+        
 # ===== THE FOLLOWING FUNCTIONS HANDLE THE CYCLEGAN NETWORK INSTANCIATION AND WEIGHTS LOADING ====
 
 def get_model(name, use_cuda=False):
