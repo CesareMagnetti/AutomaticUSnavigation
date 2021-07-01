@@ -36,4 +36,4 @@ if __name__ == "__main__":
     out = agent.test_agent(config.n_steps, env, qnetwork)
     if not os.path.exists(os.path.join(agent.results_dir, "test")):
         os.makedirs(os.path.join(agent.results_dir, "test"))
-    visualizer.render_full(out["states"], out["frames"], fname = os.path.join(agent.results_dir, "test", "sample.gif"))
+    visualizer.render_full(out, fname = os.path.join(agent.results_dir, "test", "sample.gif"))
