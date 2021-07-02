@@ -1,6 +1,6 @@
 from agent.agent import Agent
 from environment.xcatEnvironment import SingleVolumeEnvironment
-from networks.Qnetworks import SimpleQNetwork
+from networks.Qnetworks import setup_networks
 from options.options import gather_options, print_options
 from visualisation.visualizers import Visualizer
 import torch, os
@@ -26,14 +26,10 @@ if __name__ == "__main__":
     # 3. instanciate agent
     agent = Agent(config)
     # 4. instanciate Qnetwork
-    qnetwork = SimpleQNetwork((1, config.load_size, config.load_size), config.action_size, config.n_agents, config.seed, config.n_blocks_Q,
-                                config.downsampling_Q, config.n_features_Q, config.dropout_Q).to(config.device)
-    if config.load is not None:
-        print("loading: {} ...".format(config.load))
-        qnetwork.load(os.path.join(config.checkpoints_dir, config.name, config.load+".pth"))
-    
+    qnetwork, _ = setup_networks(config)
+    # 5. create results    
     visualizer  = Visualizer()
     out = agent.test_agent(config.n_steps, env, qnetwork)
     if not os.path.exists(os.path.join(agent.results_dir, "test")):
         os.makedirs(os.path.join(agent.results_dir, "test"))
-    visualizer.render_full(out, fname = os.path.join(agent.results_dir, "test", "sample.gif"))
+    visualizer.render_full(out, fname = os.path.join(agent.results_dir, "test", "{}.gif".format(config.fname)))

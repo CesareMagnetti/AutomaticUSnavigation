@@ -53,7 +53,7 @@ def train(config, local_model, target_model, rank=0):
         if config.wandb in ["online", "offline"]:
                 wandb.login()
         ## uncomment this when not performing a sweep and comment the next line.
-        wandb.init(entity="us_navigation", config=config, mode=config.wandb)#name=config.name)
+        wandb.init(entity="us_navigation", config=config, mode=config.wandb, name=config.name)
         #wandb.init(config=config, entity="cesare-magnetti", project="AutomaticUSnavigation")
         config = wandb.config # oddly this ensures wandb works smoothly
         # 3. tell wandb to watch what the model gets up to: gradients, weights, and loss
