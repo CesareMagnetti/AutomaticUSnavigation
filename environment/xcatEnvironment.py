@@ -119,6 +119,7 @@ class SingleVolumeEnvironment(BaseEnvironment):
         # log these rewards to the current episode count
         shared_rewards.update(single_rewards)
         for r in self.logged_rewards:
+            self.current_logs[r] = shared_rewards[r]
             self.logs[r]+=shared_rewards[r]   
         return total_rewards[..., np.newaxis].astype(np.float)
 
@@ -172,6 +173,7 @@ class SingleVolumeEnvironment(BaseEnvironment):
         self.state = np.vstack([pointA, pointB, pointC]).astype(np.int)
         # reset the logged rewards for this episode
         self.logs = {r: 0 for r in self.logged_rewards}
+        self.current_logs = {r: 0 for r in self.logged_rewards}
 
 
 # ==== HELPER FUNCTIONS ====

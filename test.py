@@ -27,9 +27,12 @@ if __name__ == "__main__":
     agent = Agent(config)
     # 4. instanciate Qnetwork
     qnetwork, _ = setup_networks(config)
-    # 5. create results    
+    # 5. instanciate visualizer to plot results    
     visualizer  = Visualizer()
-    out = agent.test_agent(config.n_steps, env, qnetwork)
     if not os.path.exists(os.path.join(agent.results_dir, "test")):
         os.makedirs(os.path.join(agent.results_dir, "test"))
-    visualizer.render_full(out, fname = os.path.join(agent.results_dir, "test", "{}.gif".format(config.fname)))
+    # 6. run test experiments and generate outputs
+    for run in range(config.n_runs):
+        print("test run: [{}]/[{}]".format(run+1, config.n_runs))
+        out = agent.test_agent(config.n_steps, env, qnetwork)
+        visualizer.render_full(out, fname = os.path.join(agent.results_dir, "test", "{}_{}.gif".format(config.fname, run)))

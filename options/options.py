@@ -84,7 +84,7 @@ def gather_options(phase="train"):
         parser.add_argument('--log_freq', type=int, default=10, help="frequency (in episodes) with wich we store logs to weights and biases.") 
     elif phase=="test":
         parser.add_argument('--train', action='store_true', default=False, help="training flag set to False.")
-        parser.add_argument('--n_runs', type=int, default=5, help="number of test runs to do")
+        parser.add_argument('--n_runs', type=int, default=10, help="number of test runs to do")
         parser.add_argument('--n_steps', type=int, default=250, help="number of steps to test the agent for.")
         parser.add_argument('--fname', type=str, default="sample", help="name of the file to save (gif).")
     else:
