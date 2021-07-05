@@ -27,33 +27,54 @@ class Visualizer():
                 plot_objects[0].set_data(np.append(states[num,:,0], states[num,0,0]), np.append(states[num,:,1], states[num,0,1]))
                 plot_objects[0].set_3d_properties(np.append(states[num,:,2], states[num,0,2]))
                 plot_objects[1]._offsets3d = (states[num,:,0], states[num,:,1], states[num,:,2])
-                plot_objects[2].set_text("oob: {:.2f}".format(logs[num]["oobReward_1"]))
-                plot_objects[3].set_text("oob: {:.2f}".format(logs[num]["oobReward_2"]))  
-                plot_objects[4].set_text("oob: {:.2f}".format(logs[num]["oobReward_3"])) 
-                plot_objects[5].set_data(frames[num])                             
-                plot_objects[7].set_title('cumulative areaReward: {:.4f}'.format(logs[num]["areaReward"]))
-                plot_objects[8].set_title("cumulative anatomy reward: {:.4f}".format(logs[num]["anatomyReward"]))
+                plot_objects[2].set_text("oob: {:.2f}".format(logs["oobReward_1"][num]))
+                plot_objects[3].set_text("oob: {:.2f}".format(logs["oobReward_2"][num]))  
+                plot_objects[4].set_text("oob: {:.2f}".format(logs["oobReward_3"][num])) 
+                plot_objects[5].set_text("area reward: {:.2f}".format(logs["areaReward"][num]))
+                plot_objects[7].set_data(frames[num])                             
+                plot_objects[8].set_text("anatomy reward: {:.4f}".format(logs["anatomyReward"][num]))
+                for plot, log in zip(plot_objects[9], logs):
+                    plot.set_data(np.arange(len(logs[log][:num])), logs[log][:num])
+
                 return plot_objects
 
-            states, frames, logs = out["states"], out["frames"], out["logs"]
-            # Attaching 3D axis to the figure
-            fig = plt.figure(figsize=(12, 8))
-            ax = fig.add_subplot(121, projection='3d')
-            ax1 = fig.add_subplot(122)
+            # gather useful information
+            states, frames = out["states"], out["frames"]
+            logs = {key: [] for key in out["logs"][0]}
+            for log in out["logs"]:
+                for key, item in log.items():
+                    logs[key].append(item)
 
-            # plot the first frame
+            # Attaching 3D axis to the figure
+            fig = plt.figure(figsize=(16, 8))
+            ax = fig.add_subplot(111, projection='3d')
+            ax1 = fig.add_subplot(132)
+            ax2 = fig.add_subplot(133)
+
+            # stack the states in a single numpy array
             states = np.vstack([state[np.newaxis, ...] for state in states])
-            plot_objects = [ax.plot(np.append(states[0,:,0], states[0,0,0]), 
+
+            # instanciate a list of plot objects that will be dynamically updated to create an animation
+            plot_objects = [# 1. render the current position of the agents
+                            ax.plot(np.append(states[0,:,0], states[0,0,0]), 
                                     np.append(states[0,:,1], states[0,0,1]),
                                     np.append(states[0,:,2], states[0,0,2]), c='k', ls="--", alpha=0.5)[0],
                             ax.scatter(states[0,:,0],states[0,:,1],states[0,:,2], color=['r', 'g', 'b']),
-                            ax.text2D(0.2, 0.95, "oob: {:.2f}".format(logs[0]["oobReward_1"]), color='red', transform=ax.transAxes),
-                            ax.text2D(0.5, 0.95, "oob: {:.2f}".format(logs[0]["oobReward_2"]), color='green', transform=ax.transAxes),
-                            ax.text2D(0.8, 0.95, "oob: {:.2f}".format(logs[0]["oobReward_3"]), color='blue', transform=ax.transAxes),
-                            ax1.imshow(frames[0], cmap="Greys_r"),
+                            # 2. render a legend with the current rewards of the agents for being within the volume boundaries
+                            ax.text2D(0.2, 0.95, "oob: {:.2f}".format(logs["oobReward_1"][0]), color='red', transform=ax.transAxes),
+                            ax.text2D(0.5, 0.95, "oob: {:.2f}".format(logs["oobReward_2"][0]), color='green', transform=ax.transAxes),
+                            ax.text2D(0.8, 0.95, "oob: {:.2f}".format(logs["oobReward_3"][0]), color='blue', transform=ax.transAxes),
+                            # add the current reward the agents receive for distancing from each other (not clustering at a point)
+                            ax.text2D(0.5, 1, "area reward: {:.2f}".format(logs["areaReward"][0]), color='black', transform=ax.transAxes),
+                            # 3. plot the boundaries of the volume as a reference
                             plot_linear_cube(ax, 0, 0, 0, 256, 256, 256)[0],
-                            ax,
-                            ax1]
+                            # 4. plot the current imaged slice on the second subplot
+                            ax1.imshow(frames[0], cmap="Greys_r"),
+                            # add the current reward given the context anatomy contained in the slice
+                            ax1.text(0.5, 1, "anatomy reward: {:.4f}".format(logs["anatomyReward"][0]), color='black', transform=ax.transAxes),
+                            # 5. running plots for all losses
+                            [ax2.plot(log[0], label=key)[0] for key,log in logs.items()],
+                            ]
             # set the limits for the axes (slightly larger than the volume to observe oob points)
             ax.set_xlim(-50,300)
             ax.set_ylim(-50,300)

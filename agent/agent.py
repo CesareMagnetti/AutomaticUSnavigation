@@ -90,7 +90,7 @@ class Agent(BaseAgent):
             # add to output dict  
             out["frames"].append(frame)
             out["states"].append(env.state)
-            out["logs"].append(env.current_logs)
+            out["logs"].append({log: r for log,r in env.current_logs.items()})
             # get action from current state
             actions = self.act(frame, local_model)  
             # observe transition and next_slice

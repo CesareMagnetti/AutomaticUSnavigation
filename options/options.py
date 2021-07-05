@@ -25,11 +25,11 @@ def gather_options(phase="train"):
     parser.add_argument('--nmax', type=int, default=255, help="nmax value for xcatEnvironment/intensity_scaling() function.")
 
     # Qnetwork specs
-    parser.add_argument('--default_Q', type=str, default=None, help="give a standard architecure: small -> 3 blocks with stride 4. large -> 6 blocks with stride 2.")
+    parser.add_argument('--default_Q', type=str, default="small", help="give a standard architecure: small -> 3 blocks with stride 4. large -> 6 blocks with stride 2.")
     parser.add_argument('--n_blocks_Q', type=int, default=6, help="number of convolutional blocks in the Qnetwork.")
     parser.add_argument('--downsampling_Q', type=int, default=2, help="downsampling factor of each convolutional layer of the Qnetwork.")
     parser.add_argument('--n_features_Q', type=int, default=4, help="number of features in the first convolutional layer of the Qnetwork.")
-    parser.add_argument('--dropout_Q', type=bool, default=False, help="if use dropout in the Qnetwork (p=0.5 after conv layers and p=0.1 after linear layers).")
+    parser.add_argument('--dropout_Q', type=bool, default=True, help="if use dropout in the Qnetwork (p=0.5 after conv layers and p=0.1 after linear layers).")
 
     # agent specs
     parser.add_argument('--action_size', type=int, default=7, help="how many action can a single agent perform.\n(i.e. up/down,left/right,forward/backwards,do nothing = 7 in a 3D volume).")
@@ -37,7 +37,7 @@ def gather_options(phase="train"):
 
     # reward signal shaping
     parser.add_argument('--anatomyRewardIDs', type=str, default="2885", help="ID of the anatomical structure of interest. (default: left ventricle, 2885). if multiple IDs separate by comma.")
-    parser.add_argument('--steppingReward', type=float, default=0.1, help="give a small penalty for each step to incentivize moving towards planes of interest. (should be positive number)")
+    parser.add_argument('--steppingReward', type=float, default=0.01, help="give a small penalty for each step to incentivize moving towards planes of interest. (should be positive number)")
     parser.add_argument('--areaRewardWeight', type=float, default=0.01, help='how much to incentivize the agents to maximize the area of the triangle they span. (should be a positive number)\n'\
                                                                              'This is to prevent them from moving towards the edges of a volume, which are meaningless.')
     parser.add_argument('--oobReward', type=float, default=0.01, help='how much to penalis=ze each out of boundary step of an agent. (should be a positive number)')
@@ -53,23 +53,23 @@ def gather_options(phase="train"):
     # training options (general)
     parser.add_argument('--n_episodes', type=int, default=2000, help="number of episodes to train the agents for.")
     parser.add_argument('--n_steps_per_episode', type=int, default=250, help="number of steps in each episode.")
-    parser.add_argument('--batch_size', type=int, default=64, help="batch size for the replay buffer.")
+    parser.add_argument('--batch_size', type=int, default=256, help="batch size for the replay buffer.")
     parser.add_argument('--buffer_size', type=int, default=50000, help="capacity of the replay buffer.") 
     parser.add_argument('--gamma', type=int, default=0.999, help="discount factor.")
-    parser.add_argument('--learning_rate', '-lr', type=float, default=0.0002, help="learning rate for the q network.")
-    parser.add_argument('--loss', type=str, default="MSE", help='which loss to use to optimize the Qnetwork (MSE, SmoothL1).')
+    parser.add_argument('--learning_rate', '-lr', type=float, default=0.0001, help="learning rate for the q network.")
+    parser.add_argument('--loss', type=str, default="SmoothL1", help='which loss to use to optimize the Qnetwork (MSE, SmoothL1).')
     parser.add_argument('--trainer', type=str, default="DoubleDeepQLearning", help='which training routine to use (DeepQLearning, DoubleDeepQLearning...).')
 
     # training options (specific)
     parser.add_argument('--stop_decay', type=float, default=0.9, help="after what fraction of episodes we want to have eps = --eps_end or beta = --beta_end.")
     parser.add_argument('--eps_start', type=float, default=1.0, help="epsilon factor for egreedy policy, starting value.")
     parser.add_argument('--eps_end', type=float, default=0.005, help="epsilon factor for egreedy policy, starting value.")
-    parser.add_argument('--alpha', type=float, default=0.6, help="alpha factor for prioritization contribution.")
+    parser.add_argument('--alpha', type=float, default=0.8, help="alpha factor for prioritization contribution.")
     parser.add_argument('--beta_start', type=float, default=0.4, help="starting beta factor for bias correction when using a priotizied buffer.")
     parser.add_argument('--beta_end', type=float, default=1., help="ending beta factor for bias correction when using a priotizied buffer.")
-    parser.add_argument('--update_every', type=int, default=10, help="how often to update the network, in steps.")
-    parser.add_argument('--exploring_steps', type=int, default=50000, help="number of purely exploring steps at the beginning.")
-    parser.add_argument('--target_update', type=str, default="hard", help="hard or soft update for target network. If hard specify --delay_steps. If soft specify --tau.")
+    parser.add_argument('--update_every', type=int, default=100, help="how often to update the network, in steps.")
+    parser.add_argument('--exploring_steps', type=int, default=10000, help="number of purely exploring steps at the beginning.")
+    parser.add_argument('--target_update', type=str, default="soft", help="hard or soft update for target network. If hard specify --delay_steps. If soft specify --tau.")
     parser.add_argument('--tau', type=float, default=1e-2, help="weight for soft update of target parameters.")
     parser.add_argument('--delay_steps', type=int, default=10000, help="delay with which a hard update of the target network is conducted.")
 
