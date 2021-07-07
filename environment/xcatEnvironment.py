@@ -55,6 +55,10 @@ class SingleVolumeEnvironment(BaseEnvironment):
                 self.logged_rewards.append("oobReward_%d"%(i+1))
             self.rewards["oobReward"] = OutOfBoundaryReward(config.oobReward, self.sx, self.sy, self.sz)
         
+        # generate cube for agent position retrieval
+        self.agents_cube = np.zeros_like(Volume)
+        self.XYZ = None # keep XYZ computation accross function calls - speed up processing time
+        
         # get starting configuration
         self.reset()
 
@@ -70,9 +74,9 @@ class SingleVolumeEnvironment(BaseEnvironment):
                        seg (optional, np.ndarray of shape (self.sy, self.sx)): segmentation map of the sampled plane
         """
         # 1. extract plane specs
-        XYZ, P, S = get_plane_from_points(state, (self.sx, self.sy, self.sz))
+        self.XYZ, P, S = get_plane_from_points(state, (self.sx, self.sy, self.sz))
         # 2. sample plane from the current volume
-        X,Y,Z = XYZ
+        X,Y,Z = self.XYZ
         plane = self.Volume[X,Y,Z]
         # mask out of boundary pixels to black
         if oob_black == True:
@@ -83,6 +87,38 @@ class SingleVolumeEnvironment(BaseEnvironment):
             return plane, self.Segmentation[X,Y,Z]
         else:
             return plane
+    
+    def sample_agents_position(self, state):
+        
+        """ function to get the agents postion on the sampled plane
+        Params:
+        ==========
+            state (np.ndarray of shape (3,3)): v-stacked 3D points that will define a particular plane in the CT volume.
+
+            returns -> plane (np.array of shape (3, self.sx, self.sy)): 3 planes each containing one white dot representing 
+                        the position of the corresponding agent
+        """
+
+        # Retrieve agents positions and empty volume
+        A, B, C = state
+        tmp_cube = self.agents_cube
+        
+        # Identify pixels where the agents are with unique values
+        if is_in_volume(self.Volume, A):
+            tmp_cube[A[0], A[1], A[2]] = 1
+        if is_in_volume(self.Volume, B):
+            tmp_cube[B[0], B[1], B[2]] = 2
+        if is_in_volume(self.Volume, C):
+            tmp_cube[C[0], C[1], C[2]] = 3
+
+        # Sample plane defined by the sample_plane function in the empty volume
+        X,Y,Z = self.XYZ
+        plane = tmp_cube[X,Y,Z]
+
+        # Separate each agent into it's own channel
+        plane = np.stack((plane == 1, plane == 2, plane == 3))
+
+        return plane
 
     def get_reward(self, seg, state):
         """Calculates the corresponding reward of stepping into a state given its segmentation map.
@@ -146,29 +182,29 @@ class SingleVolumeEnvironment(BaseEnvironment):
         # sample a random plane (defined by 3 points) to start the episode from
         if self.config.easy_objective:
             # these planes correspond more or less to a 4-chamber view
-            pointA = np.array([np.random.uniform(low=0.85, high=1)*self.sx,
+            pointA = np.array([np.random.uniform(low=0.85, high=1)*self.sx-1,
                               0,
-                              np.random.uniform(low=0.7, high=0.92)*self.sz])
+                              np.random.uniform(low=0.7, high=0.92)*self.sz-1])
 
-            pointB = np.array([np.random.uniform(low=0.3, high=0.43)*self.sx,
-                              self.sy,
+            pointB = np.array([np.random.uniform(low=0.3, high=0.43)*self.sx-1,
+                              self.sy-1,
                               0])
 
-            pointC = np.array([np.random.uniform(low=0.3, high=0.43)*self.sx,
-                              self.sy,
-                              self.sz]) 
+            pointC = np.array([np.random.uniform(low=0.3, high=0.43)*self.sx-1,
+                              self.sy-1,
+                              self.sz-1]) 
         else:
-            pointA = np.array([np.random.uniform(low=0., high=1)*self.sx,
+            pointA = np.array([np.random.uniform(low=0., high=1)*self.sx-1,
                               0,
-                              np.random.uniform(low=0., high=1.)*self.sz])
+                              np.random.uniform(low=0., high=1.)*self.sz-1])
 
-            pointB = np.array([np.random.uniform(low=0., high=1.)*self.sx,
-                              self.sy,
-                              np.random.uniform(low=0., high=1.)*self.sz])
+            pointB = np.array([np.random.uniform(low=0., high=1.)*self.sx-1,
+                              self.sy-1,
+                              np.random.uniform(low=0., high=1.)*self.sz-1])
 
-            pointC = np.array([np.random.uniform(low=0., high=1.)*self.sx,
-                              self.sy,
-                              np.random.uniform(low=0., high=1.)*self.sz])             
+            pointC = np.array([np.random.uniform(low=0., high=1.)*self.sx-1,
+                              self.sy-1,
+                              np.random.uniform(low=0., high=1.)*self.sz-1])             
         # stack points to define the state
         self.state = np.vstack([pointA, pointB, pointC]).astype(np.int)
         # reset the logged rewards for this episode
@@ -189,3 +225,17 @@ def intensity_scaling(ndarr, pmin=None, pmax=None, nmin=None, nmax=None):
     ndarr = (ndarr-pmin)/(pmax-pmin)
     ndarr = ndarr*(nmax-nmin)+nmin
     return ndarr
+
+def draw_sphere(arr, point, r=3, color = 255):
+    i,j,k = np.indices(arr.shape)
+    dist = np.sqrt( (point[0]-i)**2 + (point[1]-j)**2 + (point[2]-k)**2)
+    arr[dist < r] = color
+    return arr
+
+def is_in_volume(volume, point):
+    sx, sy, sz = volume.shape
+    return  (point[0] >= 0 and point[0] < sx) and (point[1] >= 0 and point[1] < sy) and (point[2] >= 0 and point[2] < sz)
+
+# Trick function to enable one-line conditions
+def doNothing():
+    return None
