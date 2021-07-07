@@ -37,10 +37,11 @@ def gather_options(phase="train"):
 
     # reward signal shaping
     parser.add_argument('--anatomyRewardIDs', type=str, default="2885", help="ID of the anatomical structure of interest. (default: left ventricle, 2885). if multiple IDs separate by comma.")
-    parser.add_argument('--steppingReward', type=float, default=0.01, help="give a small penalty for each step to incentivize moving towards planes of interest. (should be positive number)")
-    parser.add_argument('--areaRewardWeight', type=float, default=0.01, help='how much to incentivize the agents to maximize the area of the triangle they span. (should be a positive number)\n'\
+    parser.add_argument('--oobReward', type=float, default=0.01, help='how much to penalis=ze each out of boundary step of an agent.')
+    parser.add_argument('--steppingReward', type=float, default=0., help="give a small penalty for each step to incentivize moving towards planes of interest.")
+    parser.add_argument('--areaRewardWeight', type=float, default=0., help='how much to incentivize the agents to maximize the area of the triangle they span.\n'\
                                                                              'This is to prevent them from moving towards the edges of a volume, which are meaningless.')
-    parser.add_argument('--oobReward', type=float, default=0.01, help='how much to penalis=ze each out of boundary step of an agent. (should be a positive number)')
+    parser.add_argument('--stopReward', type=float, default=0., help="give a penalty when the agents decide to stop on a bad frame.")
 
 
     # random seed for reproducibility
