@@ -94,3 +94,21 @@ class OutOfBoundaryReward(object):
             else:
                 total_penalty+=self.penalty*abs(coord) 
         return total_penalty
+
+class StopReward(object):
+    """Rewards the agents receive when they stop (all agents output the action to stay still). When axting greedily this means that
+       that the navigation will stop on the current frame. If the frame is bad (no anatomical context of interest contained in the image)
+       then give a large penalty to the agents.
+    """
+    def __init__(self, penalty):
+        self.penalty = -abs(penalty)
+    
+    def __call__(self, increment, give_penalty):
+        # if all agents choose to not move, then increment will be an all-zero array,
+        # in this case increment.any() will return False and we give the penalty.
+        # give penalty will be a flag that the current frame does not contain any anatomy of interest.
+        if increment.any():
+            return 0
+        else:
+            if give_penalty:
+                return self.penalty

@@ -54,6 +54,9 @@ class SingleVolumeEnvironment(BaseEnvironment):
             for i in range(config.n_agents):
                 self.logged_rewards.append("oobReward_%d"%(i+1))
             self.rewards["oobReward"] = OutOfBoundaryReward(config.oobReward, self.sx, self.sy, self.sz)
+        if abs(config.stopReward) > 0:
+            self.logged_rewards.append("stopReward")
+            self.rewards["stopReward"] = StopReward(config.stopReward)
         
         # generate cube for agent position retrieval
         self.agents_cube = np.zeros_like(Volume)
@@ -120,12 +123,14 @@ class SingleVolumeEnvironment(BaseEnvironment):
 
         return plane
 
-    def get_reward(self, seg, state):
+    def get_reward(self, seg, state=None, increment=None):
         """Calculates the corresponding reward of stepping into a state given its segmentation map.
         Params:
         ==========
             seg (np.ndarray of shape (self.sy, self.sx)): segmentation map from which to extract the reward.
             state (np.ndarray): 3 stacked 3D arrays representing the coordinates of the agent.
+            increment (np.ndarray): 3 stacked 3D arrays containing the increment action chosen by each agent.
+                                    we use this to penalize the agents if they choose to stop on a bad frame.
         Returns -> rewards (dict): the corresponding rewards collected by the agents.
         """
         shared_rewards = {}
@@ -140,10 +145,15 @@ class SingleVolumeEnvironment(BaseEnvironment):
             elif key == "areaReward":
                 # this will contain a single reward for all agents
                 shared_rewards["areaReward"] = func(state)
+            elif key == "stopReward":
+                # this will contain a single reward for all agents
+                shared_rewards["stopReward"] = func(increment, not shared_rewards["anatomyReward"]>0)
             elif key == "oobReward":
                 # this will contain a reward for each agent
                 for i, point in enumerate(state):
-                    single_rewards["oobReward_%d"%(i+1)] = func(point)  
+                    single_rewards["oobReward_%d"%(i+1)] = func(point) 
+
+
 
         # extract total rewards of each agent
         total_rewards = [sum(shared_rewards.values())]*self.config.n_agents
@@ -172,7 +182,7 @@ class SingleVolumeEnvironment(BaseEnvironment):
         next_state = state + increment
         # observe the next plane and get the reward from segmentation map
         next_slice, segmentation = self.sample_plane(state=next_state, return_seg=True)
-        rewards = self.get_reward(segmentation, next_state)
+        rewards = self.get_reward(segmentation, next_state, increment)
         # update the current state
         self.state = next_state
         # return transition and the next_slice which has already been sampled
