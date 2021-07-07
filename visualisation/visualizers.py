@@ -34,7 +34,7 @@ class Visualizer():
                 plot_objects[7].set_data(frames[num])                             
                 plot_objects[8].set_text("anatomy reward: {:.4f}".format(logs["anatomyReward"][num]))
                 for plot, log in zip(plot_objects[9], logs.values()):
-                    plot.set_data(range(len(log[:num])), log[:num]/log.max()) # normalize for ease of visualization
+                    plot.set_data(range(len(log[:num])), log[:num]/(abs(log).max()+10e-6)) # normalize for ease of visualization
                 return plot_objects
 
             # gather useful information
