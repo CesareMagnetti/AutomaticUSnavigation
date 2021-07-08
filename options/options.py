@@ -71,7 +71,7 @@ def gather_options(phase="train"):
     parser.add_argument('--beta_start', type=float, default=0.4, help="starting beta factor for bias correction when using a priotizied buffer.")
     parser.add_argument('--beta_end', type=float, default=1., help="ending beta factor for bias correction when using a priotizied buffer.")
     parser.add_argument('--update_every', type=int, default=100, help="how often to update the network, in steps.")
-    parser.add_argument('--exploring_steps', type=int, default=10000, help="number of purely exploring steps at the beginning.")
+    parser.add_argument('--exploring_steps', type=int, default=25000, help="number of purely exploring steps at the beginning.")
     parser.add_argument('--target_update', type=str, default="soft", help="hard or soft update for target network. If hard specify --delay_steps. If soft specify --tau.")
     parser.add_argument('--tau', type=float, default=1e-2, help="weight for soft update of target parameters.")
     parser.add_argument('--delay_steps', type=int, default=10000, help="delay with which a hard update of the target network is conducted.")

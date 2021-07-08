@@ -22,18 +22,22 @@ class Visualizer():
         if len(frames[0].shape) == 3:
             new_frames = []
             for elem in frames:
-                img = elem[0, ...]
+                img = elem[0, ...]*255
                 pos1, pos2, pos3 = elem[1, ...], elem[2, ...], elem[3, ...]
                 pos1, pos2, pos3 = np.nonzero(pos1), np.nonzero(pos2), np.nonzero(pos3)
                 frame = img[..., np.newaxis]*np.ones(3)
-                frame[pos1[0], pos1[1], :] = [1, 0, 0]
-                frame[pos2[0], pos2[1], :] = [0, 1, 0]
-                frame[pos3[0], pos3[1], :] = [0, 0, 1]
+                frame = np.zeros_like(frame)
+                print(frame.shape, pos1, pos2, pos3)
+                print(frame[pos1[0], pos1[1], :])
+                frame[pos1[0], pos1[1], :] = [255, 0, 0]
+                frame[pos2[0], pos2[1], :] = [0, 255, 0]
+                frame[pos3[0], pos3[1], :] = [0, 0, 255]
+                print(frame[pos1[0], pos1[1], :])
                 # append color coded frame
                 new_frames.append(frame)
         else:
             assert len(frames[0].shape) == 2, "entries in ``frames`` have wrong dimensionality."
-            new_frames = [frame[..., np.newaxis]*np.ones(3) for frame in frames]
+            new_frames = [frame[..., np.newaxis]*np.ones(3)*255 for frame in frames]
 
         clip = ImageSequenceClip(new_frames, fps=fps)
         clip.write_gif(fname, fps=fps)

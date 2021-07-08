@@ -52,9 +52,9 @@ def train(config, local_model, target_model, rank=0):
         # 2. initialize wandb for logging purposes
         if config.wandb in ["online", "offline"]:
                 wandb.login()
-        ## uncomment this when not performing a sweep and comment the next line.
+        ## uncomment the next line when not performing a sweep and comment the next line.
+        config.name = "{}_anatomyReward_{}_areaReward_{}_steppingReward_{}_oobReward_{}_stopReward".format(config.anatomyRewardIDs, config.areaRewardWeight, config.steppingReward, config.oobReward, config.stopReward)
         wandb.init(entity="us_navigation", config=config, mode=config.wandb, name=config.name)
-        #wandb.init(config=config, entity="cesare-magnetti", project="AutomaticUSnavigation")
         config = wandb.config # oddly this ensures wandb works smoothly
         # 3. tell wandb to watch what the model gets up to: gradients, weights, and loss
         wandb.watch(local_model, criterion, log="all", log_freq=config.log_freq)

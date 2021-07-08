@@ -126,7 +126,7 @@ class SingleVolumeEnvironment(BaseEnvironment):
         X,Y,Z = self.XYZ
         plane = tmp_cube[X,Y,Z]
         # Separate each agent into it's own channel
-        plane = np.stack((plane == 1, plane == 2, plane == 3))
+        plane = np.stack((plane == 1, plane == 2, plane == 3)).astype(np.uint8)
 
         # reset the modified pixels to black
         if is_in_volume(self.Volume, A):
