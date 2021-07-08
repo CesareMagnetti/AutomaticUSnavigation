@@ -38,9 +38,9 @@ def gather_options(phase="train"):
     # reward signal shaping
     parser.add_argument('--anatomyRewardIDs', type=str, default="2885", help="ID of the anatomical structure of interest. (default: left ventricle, 2885). if multiple IDs separate by comma.")
     parser.add_argument('--oobReward', type=float, default=0.01, help='how much to penalis=ze each out of boundary step of an agent.')
-    parser.add_argument('--steppingReward', type=float, default=0., help="give a small penalty for each step to incentivize moving towards planes of interest.")
-    parser.add_argument('--areaRewardWeight', type=float, default=0., help='how much to incentivize the agents to maximize the area of the triangle they span.\n'\
+    parser.add_argument('--areaRewardWeight', type=float, default=0.01, help='how much to incentivize the agents to maximize the area of the triangle they span.\n'\
                                                                              'This is to prevent them from moving towards the edges of a volume, which are meaningless.')
+    parser.add_argument('--steppingReward', type=float, default=0., help="give a small penalty for each step to incentivize moving towards planes of interest.")
     parser.add_argument('--stopReward', type=float, default=0., help="give a penalty when the agents decide to stop on a bad frame.")
 
 
@@ -65,7 +65,7 @@ def gather_options(phase="train"):
     parser.add_argument('--stop_decay', type=float, default=0.9, help="after what fraction of episodes we want to have eps = --eps_end or beta = --beta_end.")
     parser.add_argument('--eps_start', type=float, default=1.0, help="epsilon factor for egreedy policy, starting value.")
     parser.add_argument('--eps_end', type=float, default=0.005, help="epsilon factor for egreedy policy, starting value.")
-    parser.add_argument('--alpha', type=float, default=0.8, help="alpha factor for prioritization contribution.")
+    parser.add_argument('--alpha', type=float, default=0.6, help="alpha factor for prioritization contribution.")
     parser.add_argument('--beta_start', type=float, default=0.4, help="starting beta factor for bias correction when using a priotizied buffer.")
     parser.add_argument('--beta_end', type=float, default=1., help="ending beta factor for bias correction when using a priotizied buffer.")
     parser.add_argument('--update_every', type=int, default=100, help="how often to update the network, in steps.")

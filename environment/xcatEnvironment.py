@@ -65,13 +65,14 @@ class SingleVolumeEnvironment(BaseEnvironment):
         # get starting configuration
         self.reset()
 
-    def sample_plane(self, state, return_seg=False, oob_black=True):
+    def sample_plane(self, state, return_seg=False, oob_black=True, preprocess=False):
         """ function to sample a plane from 3 3D points (state)
         Params:
         ==========
             state (np.ndarray of shape (3,3)): v-stacked 3D points that will define a particular plane in the CT volume.
             return_seg (bool): flag if we wish to return the corresponding segmentation map. (default=False)
             oob_black (bool): flack if we wish to mask out of volume pixels to black. (default=True)
+            preprocess (bool): if to preprocess the plane before returning it (unsqueeze to BxCxHxW and normalize)
 
             returns -> plane (torch.tensor of shape (1, 1, self.sy, self.sx)): corresponding plane sampled from the CT volume
                        seg (optional, np.ndarray of shape (self.sy, self.sx)): segmentation map of the sampled plane
@@ -85,6 +86,9 @@ class SingleVolumeEnvironment(BaseEnvironment):
         if oob_black == True:
             plane[P < 0] = 0
             plane[P > S] = 0
+        # normalize and unsqueeze array if needed
+        if preprocess:
+            plane = plane[np.newaxis, np.newaxis, ...]/255
         # 3. sample the segmentation if needed
         if return_seg:
             return plane, self.Segmentation[X,Y,Z]

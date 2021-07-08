@@ -117,7 +117,7 @@ class Agent(BaseAgent):
         batch, weights, indices = buffer.sample(beta=self.beta)
         weights = torch.from_numpy(weights).float().squeeze().to(self.config.device)
         states, actions, rewards, next_states = batch
-        planes = env.sample_planes(states+next_states, process=True)
+        planes = env.sample_planes(states+next_states, preprocess=True)
         # concatenate and move to gpu
         states = torch.from_numpy(np.vstack(planes[:self.config.batch_size])).float().to(self.config.device)
         next_states = torch.from_numpy(np.vstack(planes[self.config.batch_size:])).float().to(self.config.device)

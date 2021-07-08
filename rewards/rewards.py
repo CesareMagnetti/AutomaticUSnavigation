@@ -112,3 +112,5 @@ class StopReward(object):
         else:
             if give_penalty:
                 return self.penalty
+            else:
+                return 0

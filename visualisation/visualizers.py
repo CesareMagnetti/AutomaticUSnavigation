@@ -86,8 +86,8 @@ class Visualizer():
             ax.set_zlabel("z")
             # set the legend for the lineplots
             ax2.legend(bbox_to_anchor=(1.4, 1), ncol = 1, fontsize=10)
-            ax2.set_xlim(0, len(logs["areaReward"]))
-            ax2.set_ylim(0,1)
+            ax2.set_xlim(0, states.shape[0])
+            ax2.set_ylim(-1,1)
             ax2.set_title("collected rewards")
             ax2.set_xlabel("steps")
             ax2.set_ylabel("normalized reward")
