@@ -4,15 +4,16 @@ import torch.nn as nn
 def setup_networks(config):
     # manual seed
     torch.manual_seed(config.seed)
+    nchannels = 1 if not config.location_aware else 4
     # 1. instanciate the Qnetworks
     if config.default_Q is None:
-        params = [(1, config.load_size, config.load_size), config.action_size, config.n_agents, config.seed, config.n_blocks_Q,
+        params = [(nchannels, config.load_size, config.load_size), config.action_size, config.n_agents, config.seed, config.n_blocks_Q,
                    config.downsampling_Q, config.n_features_Q, config.dropout_Q]
     elif config.default_Q.lower() == "small":
-        params = [(1, config.load_size, config.load_size), config.action_size, config.n_agents, config.seed, 3,
+        params = [(nchannels, config.load_size, config.load_size), config.action_size, config.n_agents, config.seed, 3,
                    4, 32, config.dropout_Q]
     elif config.default_Q.lower() == "large":
-        params = [(1, config.load_size, config.load_size), config.action_size, config.n_agents, config.seed, 6,
+        params = [(nchannels, config.load_size, config.load_size), config.action_size, config.n_agents, config.seed, 6,
                    2, 4, config.dropout_Q]
     else:
         raise ValueError('unknown param ``--default_Q``: {}. available options: [small, large]'.format(config.default_Q))

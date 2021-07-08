@@ -43,7 +43,7 @@ class BaseAgent(object):
             np.ndarray (contains an action for each agent)
         """
         # convert to tensor, normalize and unsqueeze to pass through qnetwork
-        slice = torch.from_numpy(slice/255).float().unsqueeze(0).unsqueeze(0).to(self.config.device)
+        slice = torch.from_numpy(slice).float().to(self.config.device)
         local_model.eval()
         with torch.no_grad():
             Qs = local_model(slice)

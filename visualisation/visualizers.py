@@ -17,8 +17,25 @@ def plot_linear_cube(ax, x, y, z, dx, dy, dz, color='black'):
 
 class Visualizer():    
     def render_frames(self, frames, fname, fps=10):
-        frames = [frame[..., np.newaxis]*np.ones(3) for frame in frames]
-        clip = ImageSequenceClip(frames, fps=fps)
+        #  process theframes (the slice will always be the 0th channel in the image)
+        # images could be CxHxW if location maps are passed.
+        if len(frames[0].shape) == 3:
+            new_frames = []
+            for elem in frames:
+                img = elem[0, ...]
+                pos1, pos2, pos3 = elem[1, ...], elem[2, ...], elem[3, ...]
+                pos1, pos2, pos3 = np.nonzero(pos1), np.nonzero(pos2), np.nonzero(pos3)
+                frame = img[..., np.newaxis]*np.ones(3)
+                frame[pos1[0], pos1[1], :] = [1, 0, 0]
+                frame[pos2[0], pos2[1], :] = [0, 1, 0]
+                frame[pos3[0], pos3[1], :] = [0, 0, 1]
+                # append color coded frame
+                new_frames.append(frame)
+        else:
+            assert len(frames[0].shape) == 2, "entries in ``frames`` have wrong dimensionality."
+            new_frames = [frame[..., np.newaxis]*np.ones(3) for frame in frames]
+
+        clip = ImageSequenceClip(new_frames, fps=fps)
         clip.write_gif(fname, fps=fps)
 
     def render_full(self, out, fname, fps=10):
@@ -38,22 +55,39 @@ class Visualizer():
                 return plot_objects
 
             # gather useful information
-            states, frames = out["states"], out["frames"]
+            # 1. rearrange logs
             logs = {key: [] for key in out["logs"][0]}
             for log in out["logs"]:
                 for key, item in log.items():
                     logs[key].append(item)
             for key in logs:
                 logs[key] = np.array(logs[key])
+            # 2. stack the states in a single numpy array
+            states = np.vstack([state[np.newaxis, ...] for state in out["states"]])
+            # 3. process theframes (the slice will always be the 0th channel in the image)
+            # images could be CxHxW if location maps are passed.
+            if len(out["frames"][0].shape) == 2:
+                frames = out["frames"]
+            elif len(out["frames"][0].shape) == 3:
+                frames = []
+                for elem in out["frames"]:
+                    img = elem[0, ...]
+                    pos1, pos2, pos3 = elem[1, ...], elem[2, ...], elem[3, ...]
+                    pos1, pos2, pos3 = np.nonzero(pos1), np.nonzero(pos2), np.nonzero(pos3)
+                    frame = np.dstack([img, img, img])
+                    frame[pos1[0], pos1[1], :] = [1, 0, 0]
+                    frame[pos2[0], pos2[1], :] = [0, 1, 0]
+                    frame[pos3[0], pos3[1], :] = [0, 0, 1]
+                    # append color coded frame
+                    frames.append(frame)
+            else:
+                raise ValueError("entries in out['frames'] have wrong dimensionality.")
+
             # Attaching 3D axis to the figure
             fig = plt.figure(figsize=(14, 4))
             ax = fig.add_subplot(131, projection='3d')
             ax1 = fig.add_subplot(132)
-            ax2 = fig.add_subplot(133)
-
-            # stack the states in a single numpy array
-            states = np.vstack([state[np.newaxis, ...] for state in states])
-
+            ax2 = fig.add_subplot(133)   
             # instanciate a list of plot objects that will be dynamically updated to create an animation
             plot_objects = [# 1. render the current position of the agents
                             ax.plot(np.append(states[0,:,0], states[0,0,0]), 

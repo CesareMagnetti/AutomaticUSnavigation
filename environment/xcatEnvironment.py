@@ -4,7 +4,6 @@ from rewards.rewards import *
 import numpy as np
 import SimpleITK as sitk
 import os
-from moviepy.editor import ImageSequenceClip
 
 class SingleVolumeEnvironment(BaseEnvironment):
     def __init__(self, config, vol_id=0):
@@ -58,9 +57,12 @@ class SingleVolumeEnvironment(BaseEnvironment):
             self.logged_rewards.append("stopReward")
             self.rewards["stopReward"] = StopReward(config.stopReward)
         
+        # flag if the environment should return positional information to the agents
+        self.location_aware = config.location_aware
         # generate cube for agent position retrieval
         self.agents_cube = np.zeros_like(Volume)
-        self.XYZ = None # keep XYZ computation accross function calls - speed up processing time
+        # keep XYZ computation accross function calls - speed up processing time
+        self.XYZ = None 
         
         # get starting configuration
         self.reset()
@@ -72,8 +74,7 @@ class SingleVolumeEnvironment(BaseEnvironment):
             state (np.ndarray of shape (3,3)): v-stacked 3D points that will define a particular plane in the CT volume.
             return_seg (bool): flag if we wish to return the corresponding segmentation map. (default=False)
             oob_black (bool): flack if we wish to mask out of volume pixels to black. (default=True)
-            preprocess (bool): if to preprocess the plane before returning it (unsqueeze to BxCxHxW and normalize)
-
+            preprocess (bool): if to preprocess the plane before returning it (unsqueeze to BxCxHxW, normalize and/or add positional binary maps) 
             returns -> plane (torch.tensor of shape (1, 1, self.sy, self.sx)): corresponding plane sampled from the CT volume
                        seg (optional, np.ndarray of shape (self.sy, self.sx)): segmentation map of the sampled plane
         """
@@ -86,9 +87,13 @@ class SingleVolumeEnvironment(BaseEnvironment):
         if oob_black == True:
             plane[P < 0] = 0
             plane[P > S] = 0
-        # normalize and unsqueeze array if needed
+        # normalize and unsqueeze array if needed. concatenate binary location maps if necessary.
         if preprocess:
             plane = plane[np.newaxis, np.newaxis, ...]/255
+            if self.location_aware:
+                pos = self.sample_agents_position(state)
+                # concatenate along channel dimension
+                plane = np.concatenate((plane, pos[np.newaxis, ...]), axis=1)
         # 3. sample the segmentation if needed
         if return_seg:
             return plane, self.Segmentation[X,Y,Z]
@@ -105,7 +110,6 @@ class SingleVolumeEnvironment(BaseEnvironment):
             returns -> plane (np.array of shape (3, self.sx, self.sy)): 3 planes each containing one white dot representing 
                         the position of the corresponding agent
         """
-
         # Retrieve agents positions and empty volume
         A, B, C = state
         tmp_cube = self.agents_cube
@@ -121,10 +125,17 @@ class SingleVolumeEnvironment(BaseEnvironment):
         # Sample plane defined by the sample_plane function in the empty volume
         X,Y,Z = self.XYZ
         plane = tmp_cube[X,Y,Z]
-
         # Separate each agent into it's own channel
         plane = np.stack((plane == 1, plane == 2, plane == 3))
 
+        # reset the modified pixels to black
+        if is_in_volume(self.Volume, A):
+            tmp_cube[A[0], A[1], A[2]] = 0
+        if is_in_volume(self.Volume, B):
+            tmp_cube[B[0], B[1], B[2]] = 0
+        if is_in_volume(self.Volume, C):
+            tmp_cube[C[0], C[1], C[2]] = 0
+            
         return plane
 
     def get_reward(self, seg, state=None, increment=None):
@@ -157,8 +168,6 @@ class SingleVolumeEnvironment(BaseEnvironment):
                 for i, point in enumerate(state):
                     single_rewards["oobReward_%d"%(i+1)] = func(point) 
 
-
-
         # extract total rewards of each agent
         total_rewards = [sum(shared_rewards.values())]*self.config.n_agents
         if "oobReward" in self.rewards:
@@ -173,7 +182,7 @@ class SingleVolumeEnvironment(BaseEnvironment):
             self.logs[r]+=shared_rewards[r]   
         return total_rewards[..., np.newaxis].astype(np.float)
 
-    def step(self, action):
+    def step(self, action, preprocess=False):
         """Perform an input action (discrete action), observe the next state and reward.
         Params:
         ==========
@@ -185,7 +194,7 @@ class SingleVolumeEnvironment(BaseEnvironment):
         state = self.state
         next_state = state + increment
         # observe the next plane and get the reward from segmentation map
-        next_slice, segmentation = self.sample_plane(state=next_state, return_seg=True)
+        next_slice, segmentation = self.sample_plane(state=next_state, return_seg=True, preprocess=preprocess)
         rewards = self.get_reward(segmentation, next_state, increment)
         # update the current state
         self.state = next_state

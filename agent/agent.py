@@ -51,13 +51,13 @@ class Agent(BaseAgent):
         self.episode+=1
         episode_loss = 0
         env.reset()
-        slice = env.sample_plane(env.state)
+        slice = env.sample_plane(env.state, preprocess=True)
         for _ in range(self.config.n_steps_per_episode):  
             self.t_step+=1
             # get action from current state
             actions = self.act(slice, local_model, self.eps) 
             # step the environment to return a transitiony  
-            transition, next_slice = env.step(actions)
+            transition, next_slice = env.step(actions, preprocess=True)
             # add (state, action, reward, next_state) to buffer
             buffer.add(*transition)
             # learn every UPDATE_EVERY steps and if enough samples in env.buffer
@@ -84,17 +84,17 @@ class Agent(BaseAgent):
         out = {"frames": [], "states": [], "logs": []}
         # reset env to a random initial slice
         env.reset()
-        frame = env.sample_plane(env.state)
+        frame = env.sample_plane(env.state, preprocess=True)
         # play an episode greedily
         for _ in tqdm(range(1, steps+1), desc="testing..."):
             # add to output dict  
-            out["frames"].append(frame)
+            out["frames"].append(frame.squeeze())
             out["states"].append(env.state)
             out["logs"].append({log: r for log,r in env.current_logs.items()})
             # get action from current state
             actions = self.act(frame, local_model)  
             # observe transition and next_slice
-            transition, next_frame = env.step(actions)
+            transition, next_frame = env.step(actions, preprocess=True)
             # set slice to next slice
             frame = next_frame
         # add logs for wandb to out
