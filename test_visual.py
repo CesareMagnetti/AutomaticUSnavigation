@@ -1,11 +1,10 @@
+from agent.agent import Agent
 from environment.xcatEnvironment import SingleVolumeEnvironment
-from utils import Visualizer
+from networks.Qnetworks import setup_networks
 from options.options import gather_options, print_options
+from visualisation.visualizers import Visualizer
 import torch, os
 import numpy as np
-from tqdm import tqdm
-from moviepy.editor import ImageSequenceClip
-
 
 if __name__ == "__main__":
     # 1. gather options
@@ -24,7 +23,16 @@ if __name__ == "__main__":
         #         envs.append(SingleVolumeEnvironment(config, vol_id=vol_id))
     else:
         env = SingleVolumeEnvironment(config)
-    
-    visualizer = Visualizer()
-    trajectory = env.random_walk(config.n_steps, return_trajectory=True)
-    visualizer.render_states(trajectory)
+    # 3. instanciate agent
+    agent = Agent(config)
+    # 4. instanciate Qnetwork
+    qnetwork, _ = setup_networks(config)
+    # 5. instanciate visualizer to plot results    
+    visualizer  = Visualizer()
+    if not os.path.exists(os.path.join(agent.results_dir, "test")):
+        os.makedirs(os.path.join(agent.results_dir, "test"))
+    # 6. run test experiments and generate outputs
+    for run in range(config.n_runs):
+        print("test run: [{}]/[{}]".format(run+1, config.n_runs))
+        out = agent.test_agent(config.n_steps, env, qnetwork)
+        visualizer.render_full(out, fname = os.path.join(agent.results_dir, "test", "{}_{}.gif".format(config.fname, run)))

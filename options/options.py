@@ -14,7 +14,7 @@ def gather_options(phase="train"):
                         help='filename for the state dict of the ct2us model (.pth) file.\navailable models can be found at ./models')
     parser.add_argument('--results_dir', type=str, default='./results/', help='where to save the trajectory.')
     parser.add_argument('--checkpoints_dir', type=str, default='./checkpoints/', help='where to save the trajectory.')
-    parser.add_argument('--load', type=str, default=None, help='which model to load from.')
+    parser.add_argument('--load', type=str, default="latest", help='which model to load from.')
 
     # preprocessing
     parser.add_argument('--load_size', type=int, default=256, help="resolution to load the data. By default 256 isotropic resolution.")
