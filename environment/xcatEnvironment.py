@@ -1,5 +1,4 @@
 from environment.baseEnvironment import BaseEnvironment
-from utils import get_plane_from_points
 from rewards.rewards import *
 import numpy as np
 import SimpleITK as sitk
@@ -72,7 +71,7 @@ class SingleVolumeEnvironment(BaseEnvironment):
                        seg (optional, np.ndarray of shape (self.sy, self.sx)): segmentation map of the sampled plane
         """
         # 1. extract plane specs
-        XYZ, P, S = get_plane_from_points(state, (self.sx, self.sy, self.sz))
+        XYZ, P, S = self.get_plane_from_points(state, (self.sx, self.sy, self.sz))
         # 2. sample plane from the current volume
         X,Y,Z = XYZ
         plane = self.Volume[X,Y,Z]

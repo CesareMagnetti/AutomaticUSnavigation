@@ -5,7 +5,7 @@ from tqdm import tqdm
 import torch.optim as optim
 import torch.nn as nn
 
-from environment.xcatEnvironment import SingleVolumeEnvironment
+from environment.xcatEnvironment import *
 from agent.agent import Agent
 from buffer.buffer import *
 from visualisation.visualizers import Visualizer
@@ -30,7 +30,10 @@ def train(config, local_model, target_model, wandb_entity="us_navigation", sweep
         # manual seed
         torch.manual_seed(config.seed + rank) 
         # 1. instanciate environment
-        env = SingleVolumeEnvironment(config)
+        if not config.location_aware:
+            env = SingleVolumeEnvironment(config)
+        else:
+            env = LocationAwareSingleVolumeEnvironment(config)
         # 2. instanciate agent
         agent = Agent(config)
         # 3. instanciate optimizer for local_network
@@ -85,68 +88,6 @@ def train(config, local_model, target_model, wandb_entity="us_navigation", sweep
         torch.onnx.export(local_model, sample_inputs.float().to(agent.config.device), "DQN.onnx")
 
 # ==== THE FOLLOWING FUNCTION HANDLE 2D PLANE SAMPLING OF A 3D VOLUME ====
-def get_plane_coefs(p1, p2, p3):
-    """ Gets the coefficients of a 3D plane given the coordinates of 3 3D points
-    """
-    # These two vectors are in the plane
-    v1 = p3 - p1
-    v2 = p2 - p1
-    # the cross product is a vector normal to the plane
-    cp = np.cross(v1, v2)
-    a, b, c = cp
-    # This evaluates a * x3 + b * y3 + c * z3 which equals d
-    d = np.dot(cp, p3)
-    return a, b, c, d
-
-def get_plane_from_points(points, shape):
-        """ function to sample a plane from 3 3D points (state)
-        Params:
-        ==========
-            points (np.ndarray of shape (3,3)): v-stacked 3D points that will define a particular plane in the volume.
-            shape (np.ndarry): shape of the 3D volume to sample plane from
-
-            returns -> (X,Y,Z) ndarrays that will index Volume in order to extract a specific plane.
-        """
-        # get plane coefs
-        a,b,c,d = get_plane_coefs(*points)
-        # get volume shape
-        sx, sy, sz = shape
-        # extract corresponding slice
-        main_ax = np.argmax([abs(a), abs(b), abs(c)])
-        if main_ax == 0:
-            Y, Z = np.meshgrid(np.arange(sy), np.arange(sz), indexing='ij')
-            X = (d - b * Y - c * Z) / a
-
-            X = X.round().astype(np.int)
-            P = X.copy()
-            S = sx-1
-
-            X[X <= 0] = 0
-            X[X >= sx] = sx-1
-
-        elif main_ax==1:
-            X, Z = np.meshgrid(np.arange(sx), np.arange(sz), indexing='ij')
-            Y = (d - a * X - c * Z) / b
-
-            Y = Y.round().astype(np.int)
-            P = Y.copy()
-            S = sy-1
-
-            Y[Y <= 0] = 0
-            Y[Y >= sy] = sy-1
-        
-        elif main_ax==2:
-            X, Y = np.meshgrid(np.arange(sx), np.arange(sy), indexing='ij')
-            Z = (d - a * X - b * Y) / c
-
-            Z = Z.round().astype(np.int)
-            P = Z.copy()
-            S = sz-1
-
-            Z[Z <= 0] = 0
-            Z[Z >= sz] = sz-1
-        
-        return (X,Y,Z), P, S
 
 def convertCoordinates3Dto2D(p1, p2, p3, origin = None):
         """ defines the 2D plane, the basis vectors of the 2D coord systems and the origin of the new coord system.

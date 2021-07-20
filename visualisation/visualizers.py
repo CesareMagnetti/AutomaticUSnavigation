@@ -17,7 +17,7 @@ def plot_linear_cube(ax, x, y, z, dx, dy, dz, color='black'):
     return ax.plot3D([x+dx, x+dx], [y, y], [z, z+dz], **kwargs)
 
 class Visualizer():   
-    def __init(self, savedir):
+    def __init__(self, savedir):
         self.savedir = os.path.join(savedir, "visuals")
         if not os.path.exists(self.savedir):
             os.makedirs(self.savedir)

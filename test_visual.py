@@ -13,22 +13,14 @@ if __name__ == "__main__":
     config.use_cuda = torch.cuda.is_available()
     config.device = torch.device("cuda" if config.use_cuda else "cpu")
     print_options(config, parser)
-
-    # 2. instanciate environment(s)
-    vol_ids = config.volume_ids.split(",")
-    if len(vol_ids)>1:
-        raise ValueError('only supporting single volume environments for now.')
-        # envs = []
-        # for vol_id in range(len(vol_ids)):
-        #         envs.append(SingleVolumeEnvironment(config, vol_id=vol_id))
-    else:
-        env = SingleVolumeEnvironment(config)
+    # 2. instanciate environmentv(only single env for now)
+    env = SingleVolumeEnvironment(config)
     # 3. instanciate agent
     agent = Agent(config)
     # 4. instanciate Qnetwork
     qnetwork, _ = setup_networks(config)
     # 5. instanciate visualizer to plot results    
-    visualizer  = Visualizer()
+    visualizer  = Visualizer(agent.results_dir)
     if not os.path.exists(os.path.join(agent.results_dir, "test")):
         os.makedirs(os.path.join(agent.results_dir, "test"))
     # 6. run test experiments and generate outputs
