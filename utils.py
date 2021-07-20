@@ -78,9 +78,10 @@ def train(config, local_model, target_model, wandb_entity="us_navigation", sweep
                         # test the greedy policy and send logs
                         out = agent.test_agent(config.n_steps_per_episode, env, local_model)
                         wandb.log(out["wandb"], commit=True)
-                        # plot the trajectory followed by the agent in the current episode
-                        visualizer.render_frames(out["frames"], fname)
-                        wandb.save(fname)
+                        # animate the trajectory followed by the agent in the current episode
+                        visualizer.render_frames(out["frames"], "episode%d.gif"%episode)
+                        # upload file to wandb
+                        wandb.save(os.path.join(visualizer.savedir, "episode%d.gif"%episode))
         # at the end of the training session save the model as .onnx to improve the open sourceness and exchange-ability amongst different ML frameworks
         sample_inputs = torch.tensor(out["frames"][:agent.config.batch_size]) # if location aware this will be already of shape BxCxHxW otherwise this will be BxHxW.
         if len(sample_inputs.shape) == 3:

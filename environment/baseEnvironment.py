@@ -104,22 +104,7 @@ class BaseEnvironment(object):
         if return_trajectory:
             return trajectory
 
-    @staticmethod
-    def get_plane_coefs(p1, p2, p3):
-        """ Gets the coefficients of a 3D plane given the coordinates of 3 3D points
-        """
-        # These two vectors are in the plane
-        v1 = p3 - p1
-        v2 = p2 - p1
-        # the cross product is a vector normal to the plane
-        cp = np.cross(v1, v2)
-        a, b, c = cp
-        # This evaluates a * x3 + b * y3 + c * z3 which equals d
-        d = np.dot(cp, p3)
-        return a, b, c, d
-
-    @staticmethod
-    def get_plane_from_points(points, shape):
+    def get_plane_from_points(self, points, shape):
             """ function to sample a plane from 3 3D points (state)
             Params:
             ==========
@@ -169,6 +154,20 @@ class BaseEnvironment(object):
             
             return (X,Y,Z), P, S
 
+    @staticmethod
+    def get_plane_coefs(p1, p2, p3):
+        """ Gets the coefficients of a 3D plane given the coordinates of 3 3D points
+        """
+        # These two vectors are in the plane
+        v1 = p3 - p1
+        v2 = p2 - p1
+        # the cross product is a vector normal to the plane
+        cp = np.cross(v1, v2)
+        a, b, c = cp
+        # This evaluates a * x3 + b * y3 + c * z3 which equals d
+        d = np.dot(cp, p3)
+        return a, b, c, d
+        
     @staticmethod
     def mapActionToIncrement(action):
         """ Maps a discrete action to a specific increment that will be added to the state in self.step() in order
