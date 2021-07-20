@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d.axes3d import Axes3D
 import matplotlib.animation as animation
 from moviepy.editor import ImageSequenceClip
+import os
 
 def plot_linear_cube(ax, x, y, z, dx, dy, dz, color='black'):
     xx = [x, x, x+dx, x+dx, x]
@@ -15,7 +16,12 @@ def plot_linear_cube(ax, x, y, z, dx, dy, dz, color='black'):
     ax.plot3D([x+dx, x+dx], [y+dy, y+dy], [z, z+dz], **kwargs)
     return ax.plot3D([x+dx, x+dx], [y, y], [z, z+dz], **kwargs)
 
-class Visualizer():    
+class Visualizer():   
+    def __init(self, savedir):
+        self.savedir = os.path.join(savedir, "visuals")
+        if not os.path.exists(self.savedir):
+            os.makedirs(self.savedir)
+        
     def render_frames(self, frames, fname, fps=10):
         #  process theframes (the slice will always be the 0th channel in the image)
         # images could be CxHxW if location maps are passed.
@@ -38,9 +44,9 @@ class Visualizer():
         else:
             assert len(frames[0].shape) == 2, "entries in ``frames`` have wrong dimensionality."
             new_frames = [frame[..., np.newaxis]*np.ones(3)*255 for frame in frames]
-
+        # generate the gif
         clip = ImageSequenceClip(new_frames, fps=fps)
-        clip.write_gif(fname, fps=fps)
+        clip.write_gif(os.path.join(self.savedir, fname), fps=fps)
 
     def render_full(self, out, fname, fps=10):
 
