@@ -8,12 +8,12 @@ import os
 class SingleVolumeEnvironment(BaseEnvironment):
     def __init__(self, config, vol_id=0):
         """
-        Initialize an Environment object, the environment will focuse on a single XCAT/CT volume.
+        Initialize an Environment object, the environment will focus on a single XCAT/CT volume.
     
         Params that we will use:
         ======
             config (argparse object): contains all options. see ./options/options.py for more details
-            vol_id (int): specifies which volume we want to load. Specifically ``config.volume_ids`` should contain
+            vol_id (int): specifies which volume we want to load. Specifically ``config.volume_ids`` may contain
                           all queried volumes by the main.py script. (i.e. parser.volume_ids = 'samp0,samp1,samp2,samp3,samp4,samp5,samp6,samp7')
                           we will load the volume at position ``vol_id`` (default=0)               
         """
@@ -56,14 +56,7 @@ class SingleVolumeEnvironment(BaseEnvironment):
         if abs(config.stopReward) > 0:
             self.logged_rewards.append("stopReward")
             self.rewards["stopReward"] = StopReward(config.stopReward)
-        
-        # flag if the environment should return positional information to the agents
-        self.location_aware = config.location_aware
-        # generate cube for agent position retrieval
-        self.agents_cube = np.zeros_like(Volume)
-        # keep XYZ computation accross function calls - speed up processing time
-        self.XYZ = None 
-        
+                
         # get starting configuration
         self.reset()
 
@@ -79,65 +72,23 @@ class SingleVolumeEnvironment(BaseEnvironment):
                        seg (optional, np.ndarray of shape (self.sy, self.sx)): segmentation map of the sampled plane
         """
         # 1. extract plane specs
-        self.XYZ, P, S = get_plane_from_points(state, (self.sx, self.sy, self.sz))
+        XYZ, P, S = get_plane_from_points(state, (self.sx, self.sy, self.sz))
         # 2. sample plane from the current volume
-        X,Y,Z = self.XYZ
+        X,Y,Z = XYZ
         plane = self.Volume[X,Y,Z]
         # mask out of boundary pixels to black
         if oob_black == True:
             plane[P < 0] = 0
             plane[P > S] = 0
-        # normalize and unsqueeze array if needed. concatenate binary location maps if necessary.
+        # normalize and unsqueeze array if needed.
         if preprocess:
             plane = plane[np.newaxis, np.newaxis, ...]/255
-            if self.location_aware:
-                pos = self.sample_agents_position(state)
-                # concatenate along channel dimension
-                plane = np.concatenate((plane, pos[np.newaxis, ...]), axis=1)
         # 3. sample the segmentation if needed
         if return_seg:
             return plane, self.Segmentation[X,Y,Z]
         else:
             return plane
     
-    def sample_agents_position(self, state):
-        
-        """ function to get the agents postion on the sampled plane
-        Params:
-        ==========
-            state (np.ndarray of shape (3,3)): v-stacked 3D points that will define a particular plane in the CT volume.
-
-            returns -> plane (np.array of shape (3, self.sx, self.sy)): 3 planes each containing one white dot representing 
-                        the position of the corresponding agent
-        """
-        # Retrieve agents positions and empty volume
-        A, B, C = state
-        tmp_cube = self.agents_cube
-        
-        # Identify pixels where the agents are with unique values
-        if is_in_volume(self.Volume, A):
-            tmp_cube[A[0], A[1], A[2]] = 1
-        if is_in_volume(self.Volume, B):
-            tmp_cube[B[0], B[1], B[2]] = 2
-        if is_in_volume(self.Volume, C):
-            tmp_cube[C[0], C[1], C[2]] = 3
-
-        # Sample plane defined by the sample_plane function in the empty volume
-        X,Y,Z = self.XYZ
-        plane = tmp_cube[X,Y,Z]
-        # Separate each agent into it's own channel
-        plane = np.stack((plane == 1, plane == 2, plane == 3)).astype(np.uint8)
-
-        # reset the modified pixels to black
-        if is_in_volume(self.Volume, A):
-            tmp_cube[A[0], A[1], A[2]] = 0
-        if is_in_volume(self.Volume, B):
-            tmp_cube[B[0], B[1], B[2]] = 0
-        if is_in_volume(self.Volume, C):
-            tmp_cube[C[0], C[1], C[2]] = 0
-            
-        return plane
-
     def get_reward(self, seg, state=None, increment=None):
         """Calculates the corresponding reward of stepping into a state given its segmentation map.
         Params:
@@ -234,6 +185,100 @@ class SingleVolumeEnvironment(BaseEnvironment):
         self.logs = {r: 0 for r in self.logged_rewards}
         self.current_logs = {r: 0 for r in self.logged_rewards}
 
+
+class LocationAwareSingleVolumeEnvironment(SingleVolumeEnvironment):
+    """
+    Environment object that inherits most of SingleVolumeEnvironment defined above. In addition it will compute binary maps of the agents location in the 3D volume
+    and concatenate them to the slice along the channel dimension before passing them to the Qnetwork. We believe this should embed the network with some information
+    about the location of each agent, coordinating the action of each agent head with respect to the position of the other 2 agents. However we acknowledge that this
+    will yield to a heavily sparse input space and may not be the optimal solution.
+    """
+    def __init__(self, config, vol_id=0):
+        """
+        Initialize an Environment object, the environment will focus on a single XCAT/CT volume.
+    
+        Params that we will use:
+        ======
+            config (argparse object): contains all options. see ./options/options.py for more details
+            vol_id (int): specifies which volume we want to load. Specifically ``config.volume_ids`` may contain
+                          all queried volumes by the main.py script. (i.e. parser.volume_ids = 'samp0,samp1,samp2,samp3,samp4,samp5,samp6,samp7')
+                          we will load the volume at position ``vol_id`` (default=0)               
+        """
+        # initialize environment
+        SingleVolumeEnvironment.__init__(self, config)
+        # generate cube for agent position retrieval
+        self.agents_cube = np.zeros_like(Volume)
+    
+    def sample_agents_position(self, state, X, Y, Z):
+        
+        """ function to get the agents postion on the sampled plane
+        Params:
+        ==========
+            state (np.ndarray of shape (3,3)): v-stacked 3D points that will define a particular plane in the CT volume.
+            X (np.ndarray ): X coordinates to sample from the volume (output of ``get_plane_from_points()``)
+            Y (np.ndarray ): Y coordinates to sample from the volume (output of ``get_plane_from_points()``)
+            Z (np.ndarray ): Z coordinates to sample from the volume (output of ``get_plane_from_points()``)
+
+            returns -> plane (np.array of shape (3, self.sx, self.sy)): 3 planes each containing one white dot representing 
+                        the position of the corresponding agent
+        """
+        # Retrieve agents positions and empty volume
+        A, B, C = state
+      
+        # Identify pixels where the agents are with unique values
+        if is_in_volume(self.Volume, A):
+            self.agents_cube[A[0], A[1], A[2]] = 1
+        if is_in_volume(self.Volume, B):
+            self.agents_cube[B[0], B[1], B[2]] = 2
+        if is_in_volume(self.Volume, C):
+            self.agents_cube[C[0], C[1], C[2]] = 3
+
+        # Sample plane defined by the sample_plane function in the empty volume
+        plane = self.agents_cube[X,Y,Z]
+        # Separate each agent into it's own channel
+        plane = np.stack((plane == 1, plane == 2, plane == 3)).astype(np.uint8)
+
+        # reset the modified pixels to black
+        if is_in_volume(self.Volume, A):
+            self.agents_cube[A[0], A[1], A[2]] = 0
+        if is_in_volume(self.Volume, B):
+            self.agents_cube[B[0], B[1], B[2]] = 0
+        if is_in_volume(self.Volume, C):
+            self.agents_cube[C[0], C[1], C[2]] = 0
+            
+        return plane
+    
+    def sample_plane(self, state, return_seg=False, oob_black=True, preprocess=False):
+        """ function to sample a plane from 3 3D points (state)
+        Params:
+        ==========
+            state (np.ndarray of shape (3,3)): v-stacked 3D points that will define a particular plane in the CT volume.
+            return_seg (bool): flag if we wish to return the corresponding segmentation map. (default=False)
+            oob_black (bool): flack if we wish to mask out of volume pixels to black. (default=True)
+            preprocess (bool): if to preprocess the plane before returning it (unsqueeze to BxCxHxW, normalize and/or add positional binary maps) 
+            returns -> plane (torch.tensor of shape (1, 1, self.sy, self.sx)): corresponding plane sampled from the CT volume
+                       seg (optional, np.ndarray of shape (self.sy, self.sx)): segmentation map of the sampled plane
+        """
+        # 1. extract plane specs
+        XYZ, P, S = get_plane_from_points(state, (self.sx, self.sy, self.sz))
+        # 2. sample plane from the current volume
+        X,Y,Z = XYZ
+        plane = self.Volume[X,Y,Z]
+        # mask out of boundary pixels to black
+        if oob_black == True:
+            plane[P < 0] = 0
+            plane[P > S] = 0
+        # concatenate binary location maps along channel diension
+        pos = self.sample_agents_position(state, X, Y, Z)
+        plane = np.concatenate((plane[np.newaxis, ...], pos), axis=0)
+        # normalize and unsqueeze array if needed.  if necessary.
+        if preprocess:
+            plane = plane[np.newaxis, ...]/255
+        # 3. sample the segmentation if needed
+        if return_seg:
+            return plane, self.Segmentation[X,Y,Z]
+        else:
+            return plane
 
 # ==== HELPER FUNCTIONS ====
 
