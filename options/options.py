@@ -8,14 +8,18 @@ def gather_options(phase="train"):
     parser = argparse.ArgumentParser(description='train/test scripts to launch navigation experiments.')
     # I/O directories and data
     parser.add_argument('--dataroot', '-r',  type=str, default="/vol/biomedic3/hjr119/DATA/XCAT_VOLUMES/", help='path to the XCAT CT volumes.')
-    parser.add_argument('--name', '-n', default="sample_experiment", type=str, help='name of the experiment.')
+    parser.add_argument('--name', '-n', type=str, help='name of the experiment.')
     parser.add_argument('--volume_ids', '-vol_ids', type=str, default='samp0', help='filename(s) of the CT volume(s) comma separated.')
     parser.add_argument('--ct2us_model_name', '-model', type=str, default='CycleGAN_LPIPS_noIdtLoss_lambda_AB_1',
                         help='filename for the state dict of the ct2us model (.pth) file.\navailable models can be found at ./models')
     parser.add_argument('--results_dir', type=str, default='./results/', help='where to save the trajectory.')
     parser.add_argument('--checkpoints_dir', type=str, default='./checkpoints/', help='where to save the trajectory.')
-    parser.add_argument('--load', type=str, default="latest", help='which model to load from.')
-
+    parser.add_argument('--load', type=str, default=None, help='which model to load from.')
+    # logs and checkpointing 
+    parser.add_argument('--wandb', type=str, default='online', help='handles weights and biases interface.\n'\
+                                                                'online: launches online interface.\n'\
+                                                                'offline: writes all data to disk for later syncing to a server\n'\
+                                                                'disabled: completely shuts off wandb. (default = online)')
     # preprocessing
     parser.add_argument('--load_size', type=int, default=256, help="resolution to load the data. By default 256 isotropic resolution.")
     parser.add_argument('--no_preprocess', action='store_true', help="If you do not want to preprocess the CT volume. (set to uint8 and scale intensities)")
@@ -78,11 +82,6 @@ def gather_options(phase="train"):
 
     if phase == "train":
         parser.add_argument('--train', action='store_true', default=True, help="training flag set to true.")
-        # logs and checkpointing 
-        parser.add_argument('--wandb', type=str, default='online', help='handles weights and biases interface.\n'\
-                                                                    'online: launches online interface.\n'\
-                                                                    'offline: writes all data to disk for later syncing to a server\n'\
-                                                                    'disabled: completely shuts off wandb. (default = online)')
         parser.add_argument('--save_freq', type=int, default=100, help="save Qnetworks every n episodes. Also tests the agent greedily for logs.")
         parser.add_argument('--log_freq', type=int, default=10, help="frequency (in episodes) with wich we store logs to weights and biases.") 
     elif phase=="test":
