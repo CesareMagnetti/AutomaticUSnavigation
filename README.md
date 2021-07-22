@@ -9,7 +9,7 @@ The agent is in control of moving 3 points in a 3D volume, which will select the
 <div align="center">
     <img width="100%" src="readme_images/untrained_agent.gif", alt="untrained agent acting greedily."
 	title="untrained agent acting greedily." ><br>
-	Fig 2: An untrained agent acting greedily. Our full agent consists of 3 sub-agents, each controlling the movement of 1 point in a 3D space. As each agent 	  moves around the 3 points will sample a particular view of the CT volume.<br>
+	Fig 1: An untrained agent acting greedily. Our full agent consists of 3 sub-agents, each controlling the movement of 1 point in a 3D space. As each agent 	  moves around the 3 points will sample a particular view of the CT volume.<br>
 </div>
 
 <div align="center">
