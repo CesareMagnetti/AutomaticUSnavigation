@@ -90,7 +90,51 @@ def train(config, local_model, target_model, wandb_entity="us_navigation", sweep
         # upload file to wandb
         wandb.save(os.path.join(agent.checkpoints_dir, "DQN.onnx"))
 
-# ==== THE FOLLOWING FUNCTION HANDLE 2D PLANE SAMPLING OF A 3D VOLUME ====
+# ==== SOME UTILS FOR BETTER PLANE SAMPLING TESTS ====
+class ImageTransformation():
+    def __init__(self) -> None:
+        self.tl = [] # transformation list
+
+    def add(self, name, value):
+        assert name in ['flip', 'rot']
+        
+        if len(self.tl) > 0 and self.tl[-1][0] == name:
+            if name == 'flip':
+                if value in self.tl[-1][1]:
+                    self.tl[-1][1].remove(value)
+                    if len(self.tl[-1][1]) == 0:
+                        del self.tl[-1]
+                else:
+                    self.tl[-1][1].add(value)
+
+            elif name == 'rot':
+                self.tl[-1][1] = (self.tl[-1][1] + value)%4
+                if self.tl[-1][1] == 0:
+                    del self.tl[-1]
+
+        else:
+            if name == 'flip':
+                self.tl.append([name,{value}])
+
+            elif name == 'rot':
+                self.tl.append([name,value])
+     
+    def __call__(self, img):
+        for t in self.tl:
+            if t[0] == 'flip':
+                if 0 in t[1]:
+                    img = np.flip(img, axis=0)
+                if 1 in t[1]:
+                    img = np.flip(img, axis=1)
+            elif t[0] == 'rot':
+                img = np.rot90(img, k=t[1])
+        return img
+    
+    def __str__(self) -> str:
+        string = []
+        for i, t in enumerate(self.tl):
+                string.append(f'{i}: {t[0]} {t[1]}')
+        return str(string)
 
 def convertCoordinates3Dto2D(p1, p2, p3, origin = None):
         """ defines the 2D plane, the basis vectors of the 2D coord systems and the origin of the new coord system.

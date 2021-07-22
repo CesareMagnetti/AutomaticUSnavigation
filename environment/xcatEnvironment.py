@@ -184,7 +184,71 @@ class SingleVolumeEnvironment(BaseEnvironment):
         self.logs = {r: 0 for r in self.logged_rewards}
         self.current_logs = {r: 0 for r in self.logged_rewards}
 
+# ======= TEST NEW PLANE SAMPLING =======
+from utils import ImageTransformation
+class TestNewSamplingEnvironment(SingleVolumeEnvironment):
+        def __init__(self, config, vol_id=0):
+            # initialize environment
+            SingleVolumeEnvironment.__init__(self, config)
 
+            # new plane sampling handles
+            self.prev_ax = None
+            self.trans = ImageTransformation()
+
+        # overwrite sample plane function
+        def sample_plane(self, state, return_seg=False, oob_black=True, preprocess=False)
+            # get plane coefs
+            a,b,c,d = self.get_plane_coefs(*points)
+            # new plane sampling from Hadrien's repo
+            main_ax = np.argmax([abs(a), abs(b), abs(c)])
+            sa, sb, sc = np.roll([self.sx, self.sy, self.sz],shift=(2-main_ax))
+            na, nb, nc = np.roll([a, b, c],   shift=(2-main_ax))        
+            A,B = np.meshgrid(np.arange(sa), np.arange(sb), indexing='ij')
+            C = (d - na * A - nb * B) / nc
+
+            C = C.round().astype(np.int)
+            P = C.copy()
+            S = sc-1
+
+            C[C <= 0]  = 0
+            C[C >= sc] = sc-1
+
+            # Solves weird issue with np.roll on list of arrays
+            ABC = np.stack((A, B, C))
+            idxX, idxY, idxZ = np.roll([0, 1, 2],shift=(main_ax-2))
+            X, Y, Z = ABC[idxX], ABC[idxY], ABC[idxZ]
+
+            plane = self.volume[X, Y, Z]
+
+            if oob_black == True:
+                plane[P < 0] = 0
+                plane[P > S] = 0
+            
+            # Plane adjustements:
+            if main_ax == 2:
+                plane = np.rot90(plane, k=1)
+
+            if self.prev_ax == 2 and main_ax==1:
+                self.trans.add('flip', 0)
+            elif self.prev_ax == 0 and main_ax==2:
+                self.trans.add('flip', 0)
+            elif self.prev_ax == 2 and main_ax==0:
+                self.trans.add('flip', 0)
+                self.trans.add('flip', 1)
+            elif self.prev_ax == 0 and main_ax==1:
+                if ['flip', {0}] in self.trans.tl:
+                    self.trans.add('rot', -1)
+                else:
+                    self.trans.add('rot', 1)
+            elif self.prev_ax == 1 and main_ax==0:
+                self.trans.add('rot', -1)
+                self.trans.add('flip', 0)
+            
+            self.prev_ax = main_ax
+            return  self.trans(plane)
+            
+
+# ======== LOCATION AWARE ENV ==========
 class LocationAwareSingleVolumeEnvironment(SingleVolumeEnvironment):
     """
     Environment object that inherits most of SingleVolumeEnvironment defined above. In addition it will compute binary maps of the agents location in the 3D volume
