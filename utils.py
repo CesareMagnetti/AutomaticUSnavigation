@@ -86,7 +86,9 @@ def train(config, local_model, target_model, wandb_entity="us_navigation", sweep
         sample_inputs = torch.tensor(out["frames"][:agent.config.batch_size]) # if location aware this will be already of shape BxCxHxW otherwise this will be BxHxW.
         if len(sample_inputs.shape) == 3:
                 sample_inputs = sample_inputs.unsqueeze(1)
-        torch.onnx.export(local_model, sample_inputs.float().to(agent.config.device), "DQN.onnx")
+        torch.onnx.export(local_model, sample_inputs.float().to(agent.config.device), os.path.join(agent.checkpoints_dir, "DQN.onnx"))
+        # upload file to wandb
+        wandb.save(os.path.join(agent.checkpoints_dir, "DQN.onnx"))
 
 # ==== THE FOLLOWING FUNCTION HANDLE 2D PLANE SAMPLING OF A 3D VOLUME ====
 
