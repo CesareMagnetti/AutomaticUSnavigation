@@ -185,7 +185,47 @@ class SingleVolumeEnvironment(BaseEnvironment):
         self.current_logs = {r: 0 for r in self.logged_rewards}
 
 # ======= TEST NEW PLANE SAMPLING =======
-from utils import ImageTransformation
+class ImageTransformation():
+    def __init__(self) -> None:
+        self.tl = [] # transformation list
+
+    def add(self, name, value):
+        assert name in ['flip', 'rot']
+        if len(self.tl) > 0 and self.tl[-1][0] == name:
+            if name == 'flip':
+                if value in self.tl[-1][1]:
+                    self.tl[-1][1].remove(value)
+                    if len(self.tl[-1][1]) == 0:
+                        del self.tl[-1]
+                else:
+                    self.tl[-1][1].add(value)
+            elif name == 'rot':
+                self.tl[-1][1] = (self.tl[-1][1] + value)%4
+                if self.tl[-1][1] == 0:
+                    del self.tl[-1]
+        else:
+            if name == 'flip':
+                self.tl.append([name,{value}])
+            elif name == 'rot':
+                self.tl.append([name,value])
+     
+    def __call__(self, img):
+        for t in self.tl:
+            if t[0] == 'flip':
+                if 0 in t[1]:
+                    img = np.flip(img, axis=0)
+                if 1 in t[1]:
+                    img = np.flip(img, axis=1)
+            elif t[0] == 'rot':
+                img = np.rot90(img, k=t[1])
+        return img
+    
+    def __str__(self) -> str:
+        string = []
+        for i, t in enumerate(self.tl):
+                string.append(f'{i}: {t[0]} {t[1]}')
+        return str(string)
+
 class TestNewSamplingEnvironment(SingleVolumeEnvironment):
     """Inherits everything from the standard environment class but overrides the plane sampling mehtod.
     """
@@ -339,7 +379,7 @@ class LocationAwareSingleVolumeEnvironment(SingleVolumeEnvironment):
                        seg (optional, np.ndarray of shape (self.sy, self.sx)): segmentation map of the sampled plane
         """
         # 1. extract plane specs
-        XYZ, P, S = get_plane_from_points(state, (self.sx, self.sy, self.sz))
+        XYZ, P, S = self.get_plane_from_points(state, (self.sx, self.sy, self.sz))
         # 2. sample plane from the current volume
         X,Y,Z = XYZ
         plane = self.Volume[X,Y,Z]
