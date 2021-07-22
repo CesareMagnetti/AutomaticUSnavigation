@@ -44,8 +44,8 @@ def gather_options(phase="train"):
     parser.add_argument('--oobReward', type=float, default=0.01, help='how much to penalis=ze each out of boundary step of an agent.')
     parser.add_argument('--areaRewardWeight', type=float, default=0.01, help='how much to incentivize the agents to maximize the area of the triangle they span.\n'\
                                                                              'This is to prevent them from moving towards the edges of a volume, which are meaningless.')
-    parser.add_argument('--steppingReward', type=float, default=0., help="give a small penalty for each step to incentivize moving towards planes of interest.")
-    parser.add_argument('--stopReward', type=float, default=0., help="give a penalty when the agents decide to stop on a bad frame.")
+    parser.add_argument('--steppingReward', type=float, default=0.01, help="give a small penalty for each step to incentivize moving towards planes of interest.")
+    parser.add_argument('--stopReward', type=float, default=0.01, help="give a penalty when the agents decide to stop on a bad frame.")
 
 
     # random seed for reproducibility
