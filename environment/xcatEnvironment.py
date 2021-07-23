@@ -64,7 +64,7 @@ class SingleVolumeEnvironment(BaseEnvironment):
             self.rewards["stopReward"] = StopReward(config.stopReward)
         if config.penalize_oob_pixels:
             self.logged_rewards.append("oobPixelsReward")
-            self.rewards["oobPixelsReward"] = StopReward(AnatomyReward(0, is_penalty=True))            
+            self.rewards["oobPixelsReward"] = AnatomyReward("0", is_penalty=True)           
                 
         # get starting configuration
         self.reset()
@@ -127,6 +127,9 @@ class SingleVolumeEnvironment(BaseEnvironment):
             elif key == "stopReward":
                 # this will contain a single reward for all agents
                 shared_rewards["stopReward"] = func(increment, not shared_rewards["anatomyReward"]>0)
+            elif key == "oobPixelsReward":
+                # this will contain a single reward for all agents
+                shared_rewards["oobPixelsReward"] = func(seg)
             elif key == "oobReward":
                 # this will contain a reward for each agent
                 for i, point in enumerate(state):
@@ -182,15 +185,15 @@ class SingleVolumeEnvironment(BaseEnvironment):
                               self.sz-1]) 
         else:
             pointA = np.array([np.random.uniform(low=0., high=1)*self.sx-1,
-                              0,
+                              np.random.uniform(low=0., high=1)*self.sy-1,
                               np.random.uniform(low=0., high=1.)*self.sz-1])
 
             pointB = np.array([np.random.uniform(low=0., high=1.)*self.sx-1,
-                              self.sy-1,
+                              np.random.uniform(low=0., high=1)*self.sy-1,
                               np.random.uniform(low=0., high=1.)*self.sz-1])
 
             pointC = np.array([np.random.uniform(low=0., high=1.)*self.sx-1,
-                              self.sy-1,
+                              np.random.uniform(low=0., high=1)*self.sy-1,
                               np.random.uniform(low=0., high=1.)*self.sz-1])             
         # stack points to define the state
         self.state = np.vstack([pointA, pointB, pointC]).astype(np.int)
@@ -342,7 +345,7 @@ class LocationAwareSingleVolumeEnvironment(SingleVolumeEnvironment):
         # generate cube for agent position retrieval
         self.agents_cube = np.zeros_like(self.Volume)
     
-    def sample_agents_position(self, state, X, Y, Z):
+    def sample_agents_position(self, state, X, Y, Z, radius=10):
         
         """ function to get the agents postion on the sampled plane
         Params:
@@ -358,7 +361,7 @@ class LocationAwareSingleVolumeEnvironment(SingleVolumeEnvironment):
         # Retrieve agents positions and empty volume
         A, B, C = state
       
-        # Identify pixels where the agents are with unique values
+        #Identify pixels where the agents are with unique values
         if is_in_volume(self.Volume, A):
             self.agents_cube[A[0], A[1], A[2]] = 1
         if is_in_volume(self.Volume, B):
@@ -368,9 +371,22 @@ class LocationAwareSingleVolumeEnvironment(SingleVolumeEnvironment):
 
         # Sample plane defined by the sample_plane function in the empty volume
         plane = self.agents_cube[X,Y,Z]
-        # Separate each agent into it's own channel
-        plane = np.stack((plane == 1, plane == 2, plane == 3)).astype(np.uint8)
-
+        # extract the 2D location of the agents
+        loc1, loc2, loc3 = np.where(plane == 1), np.where(plane == 2), np.where(plane == 3)
+        # make each map a smooth (distances from the white dot)
+        maps = []
+        for loc in [loc1,loc2,loc3]:
+            rows, cols = np.meshgrid(np.arange(self.sx), np.arange(self.sy))
+            try:
+                rows-=loc[0]
+                cols-=loc[1]
+                arr = np.stack([abs(rows),abs(cols)])
+                maps.append(arr.max(0))
+            except:
+                maps.append(np.zeros_like(plane))
+        # Separate each agent into it's own channel, set them as white (255 since we use uint8)
+        #plane = np.stack((plane == 1, plane == 2, plane == 3)).astype(np.uint8)*255
+        plane = np.stack(maps)
         # reset the modified pixels to black
         if is_in_volume(self.Volume, A):
             self.agents_cube[A[0], A[1], A[2]] = 0
