@@ -1,5 +1,5 @@
 from agent.agent import Agent
-from environment.xcatEnvironment import SingleVolumeEnvironment
+from environment.xcatEnvironment import setup_environment
 from networks.Qnetworks import setup_networks
 from options.options import gather_options, print_options
 from visualisation.visualizers import Visualizer
@@ -14,7 +14,7 @@ if __name__ == "__main__":
     config.device = torch.device("cuda" if config.use_cuda else "cpu")
     print_options(config, parser)
     # 2. instanciate environmentv(only single env for now)
-    env = SingleVolumeEnvironment(config)
+    env = setup_environment(config)
     # 3. instanciate agent
     agent = Agent(config)
     # 4. instanciate Qnetwork

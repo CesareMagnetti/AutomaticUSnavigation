@@ -23,30 +23,12 @@ class Visualizer():
             os.makedirs(self.savedir)
         
     def render_frames(self, frames, fname, fps=10):
-        #  process theframes (the slice will always be the 0th channel in the image)
-        # images could be CxHxW if location maps are passed.
-        if len(frames[0].shape) == 3:
-            new_frames = []
-            for elem in frames:
-                # img = elem[0, ...]*255
-                # pos1, pos2, pos3 = elem[1, ...], elem[2, ...], elem[3, ...]
-                # pos1, pos2, pos3 = np.nonzero(pos1), np.nonzero(pos2), np.nonzero(pos3)
-                # frame = img[..., np.newaxis]*np.ones(3)
-                # frame = np.zeros_like(frame)
-                # print(frame.shape, pos1, pos2, pos3)
-                # print(frame[pos1[0], pos1[1], :])
-                # frame[pos1[0], pos1[1], :] = [255, 0, 0]
-                # frame[pos2[0], pos2[1], :] = [0, 255, 0]
-                # frame[pos3[0], pos3[1], :] = [0, 0, 255]
-                # print(frame[pos1[0], pos1[1], :])
-                # append color coded frame
-                new_frames.append(elem[0, ...]) # just extract the anatomy slice, disregard agents position
-            new_frames = [frame[..., np.newaxis]*np.ones(3)*255 for frame in new_frames]
-        else:
-            assert len(frames[0].shape) == 2, "entries in ``frames`` have wrong dimensionality."
-            new_frames = [frame[..., np.newaxis]*np.ones(3)*255 for frame in frames]
+        # images could be CxHxW if --location_aware, retain only the first channel.
+        if len(frames[0].shape) > 2:
+            frames = [elem[0, ...] for elem in frames]
+        frames = [elem[..., np.newaxis]*np.ones(3)*255 for elem in frames]
         # generate the gif
-        clip = ImageSequenceClip(new_frames, fps=fps)
+        clip = ImageSequenceClip(frames, fps=fps)
         clip.write_gif(os.path.join(self.savedir, fname), fps=fps)
 
     def render_full(self, out, fname, fps=10):
@@ -80,17 +62,7 @@ class Visualizer():
             if len(out["frames"][0].shape) == 2:
                 frames = out["frames"]
             elif len(out["frames"][0].shape) == 3:
-                frames = []
-                for elem in out["frames"]:
-                    img = elem[0, ...]
-                    pos1, pos2, pos3 = elem[1, ...], elem[2, ...], elem[3, ...]
-                    pos1, pos2, pos3 = np.nonzero(pos1), np.nonzero(pos2), np.nonzero(pos3)
-                    frame = np.dstack([img, img, img])
-                    frame[pos1[0], pos1[1], :] = [1, 0, 0]
-                    frame[pos2[0], pos2[1], :] = [0, 1, 0]
-                    frame[pos3[0], pos3[1], :] = [0, 0, 1]
-                    # append color coded frame
-                    frames.append(frame)
+                frames = [elem[0, ...] for elem in out["frames"]]
             else:
                 raise ValueError("entries in out['frames'] have wrong dimensionality.")
 

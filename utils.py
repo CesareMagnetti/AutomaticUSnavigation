@@ -5,7 +5,7 @@ from tqdm import tqdm
 import torch.optim as optim
 import torch.nn as nn
 
-from environment.xcatEnvironment import *
+from environment.xcatEnvironment import setup_environment
 from agent.agent import Agent
 from buffer.buffer import *
 from visualisation.visualizers import Visualizer
@@ -30,28 +30,19 @@ def train(config, local_model, target_model, wandb_entity="us_navigation", sweep
         # manual seed
         torch.manual_seed(config.seed + rank) 
         # 1. instanciate environment
-        if not config.location_aware:
-            env = SingleVolumeEnvironment(config)
-        else:
-            env = LocationAwareSingleVolumeEnvironment(config)
+        env = setup_environment(config)
         # 2. instanciate agent
         agent = Agent(config)
         # 3. instanciate optimizer for local_network
         optimizer = optim.Adam(local_model.parameters(), lr=config.learning_rate)
         # 4. instanciate criterion
-        if "mse" in config.loss.lower():
-                criterion = nn.MSELoss(reduction='none')
-        elif "smooth" in config.loss.lower():
-                criterion = nn.SmoothL1Loss(reduction='none')
-        else:
-                raise ValueError()
+        criterion = setup_criterion(config)
         # 5. instanciate replay buffer
         buffer = PrioritizedReplayBuffer(config.buffer_size, config.batch_size, config.alpha)
         # 6. instanciate visualizer
         visualizer = Visualizer(agent.results_dir)
 
         # ==== LAUNCH TRAINING ====
-
         # 1. launch exploring steps if needed
         if agent.config.exploring_steps>0:
                 print("random walk to collect experience...")
@@ -89,7 +80,16 @@ def train(config, local_model, target_model, wandb_entity="us_navigation", sweep
         torch.onnx.export(local_model, sample_inputs.float().to(agent.config.device), os.path.join(agent.checkpoints_dir, "DQN.onnx"))
         # upload file to wandb
         wandb.save(os.path.join(agent.checkpoints_dir, "DQN.onnx"))
-        
+
+def setup_criterion(config):
+    if "mse" in config.loss.lower():
+        criterion = nn.MSELoss(reduction='none')
+    elif "smooth" in config.loss.lower():
+        criterion = nn.SmoothL1Loss(reduction='none')
+    else:
+        raise ValueError()
+    return criterion
+
 # ===== THE FOLLOWING FUNCTIONS HANDLE THE CYCLEGAN NETWORK INSTANCIATION AND WEIGHTS LOADING ====
 
 def get_model(name, use_cuda=False):

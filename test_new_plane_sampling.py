@@ -28,3 +28,8 @@ if __name__ == "__main__":
         print("test run: [{}]/[{}]".format(run+1, config.n_runs))
         out = agent.test_agent(config.n_steps, env, qnetwork)
         visualizer.render_full(out, fname = os.path.join(agent.results_dir, "test", "{}_{}.gif".format(config.fname, run)))
+        states = np.array(out["states"])
+        np.savetxt(os.path.join(agent.results_dir, "test", "{}_{}.csv".format(config.fname, run)),
+                                states.reshape(states.shape[0], -1),
+                                delimiter=',')
+    
