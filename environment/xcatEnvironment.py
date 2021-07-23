@@ -4,6 +4,13 @@ import numpy as np
 import SimpleITK as sitk
 import os
 
+def setup_environment(config):
+    if not config.location_aware:
+        env = SingleVolumeEnvironment(config)
+    else:
+        env = LocationAwareSingleVolumeEnvironment(config)
+    return env
+
 class SingleVolumeEnvironment(BaseEnvironment):
     def __init__(self, config, vol_id=0):
         """
@@ -55,6 +62,9 @@ class SingleVolumeEnvironment(BaseEnvironment):
         if abs(config.stopReward) > 0:
             self.logged_rewards.append("stopReward")
             self.rewards["stopReward"] = StopReward(config.stopReward)
+        if config.penalize_oob_pixels:
+            self.logged_rewards.append("oobPixelsReward")
+            self.rewards["oobPixelsReward"] = StopReward(AnatomyReward(0, is_penalty=True))            
                 
         # get starting configuration
         self.reset()
@@ -84,7 +94,11 @@ class SingleVolumeEnvironment(BaseEnvironment):
             plane = plane[np.newaxis, np.newaxis, ...]/255
         # 3. sample the segmentation if needed
         if return_seg:
-            return plane, self.Segmentation[X,Y,Z]
+            seg = self.Segmentation[X,Y,Z]
+            if oob_black == True:
+                seg[P < 0] = 0
+                seg[P > S] = 0
+            return plane, seg
         else:
             return plane
     
@@ -255,13 +269,14 @@ class TestNewSamplingEnvironment(SingleVolumeEnvironment):
         C[C <= 0]  = 0
         C[C >= sc] = sc-1
 
-        # Solves weird issue with np.roll on list of arrays
-        ABC = np.stack((A, B, C))
-        idxX, idxY, idxZ = np.roll([0, 1, 2],shift=(main_ax-2))
-        X, Y, Z = ABC[idxX], ABC[idxY], ABC[idxZ]
+        if main_ax == 0:
+            X,Y,Z = C,A,B
+        elif main_ax == 1:
+            X,Y,Z = B,C,A
+        else:
+            X,Y,Z = A,B,C
 
         plane = self.Volume[X, Y, Z]
-
         if oob_black == True:
             plane[P < 0] = 0
             plane[P > S] = 0
@@ -302,7 +317,6 @@ class TestNewSamplingEnvironment(SingleVolumeEnvironment):
             return plane, seg
         else:
             return plane
-            
 
 # ======== LOCATION AWARE ENV ==========
 class LocationAwareSingleVolumeEnvironment(SingleVolumeEnvironment):

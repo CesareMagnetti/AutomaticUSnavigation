@@ -46,6 +46,7 @@ def gather_options(phase="train"):
                                                                              'This is to prevent them from moving towards the edges of a volume, which are meaningless.')
     parser.add_argument('--steppingReward', type=float, default=0.01, help="give a small penalty for each step to incentivize moving towards planes of interest.")
     parser.add_argument('--stopReward', type=float, default=0.01, help="give a penalty when the agents decide to stop on a bad frame.")
+    parser.add_argument('--penalize_oob_pixels', action='store_true', help="it will give a penalty equal to the ratio of oob pixels in a sampled slice.")
 
 
     # random seed for reproducibility

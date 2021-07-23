@@ -5,9 +5,10 @@ class AnatomyReward(object):
     in the slice sampled by the current state to this end we have segmentations of the volume and reward_id corresponds
     to the value of the anatomical tissue of interest in the segmentation (i.e. the ID of the left ventricle is 2885).
     """
-    def __init__(self, rewardIDs):
+    def __init__(self, rewardIDs, is_penalty=False):
         # if more IDs are passed store in an array
         self.IDs = [int(ID) for ID in rewardIDs.split(",")]
+        self.is_penalty = is_penalty
     
     def __call__(self, seg):
         """ evaluates the anotical reward as the ratio of pixels containing structures of interest in the segmented slice.
@@ -20,6 +21,8 @@ class AnatomyReward(object):
         for ID in self.IDs:
             rewardAnatomy += (seg==ID).sum().item()
         rewardAnatomy/=np.prod(seg.shape)
+        if self.is_penalty:
+            rewardAnatomy*=-1
         return rewardAnatomy
 
 class SteppingReward(object):
