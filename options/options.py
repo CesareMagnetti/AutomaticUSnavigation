@@ -10,7 +10,7 @@ def gather_options(phase="train"):
     parser.add_argument('--name', '-n', type=str, help='name of the experiment.')
     parser.add_argument('--dataroot', '-r',  type=str, default="/vol/biomedic3/hjr119/DATA/XCAT_VOLUMES/", help='path to the XCAT CT volumes.')
     parser.add_argument('--volume_ids', '-vol_ids', type=str, default='samp0', help='filename(s) of the CT volume(s) comma separated.')
-    parser.add_argument('--ct2us_model_name', '-model', type=str, default='CycleGAN_LPIPS_noIdtLoss_lambda_AB_1',
+    parser.add_argument('--ct2us_model_name', '-model', type=str, default=None,
                         help='filename for the state dict of the ct2us model (.pth) file.\navailable models can be found at ./models')
     parser.add_argument('--results_dir', type=str, default='./results/', help='where to save the trajectory.')
     parser.add_argument('--checkpoints_dir', type=str, default='./checkpoints/', help='where to save the trajectory.')

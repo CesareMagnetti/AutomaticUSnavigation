@@ -81,22 +81,24 @@ class Agent(BaseAgent):
             env (environment/* instance): the environment the agent will interact with while testing.
             local_model (PyTorch model): pytorch network that will be tested.
         """
-        out = {"frames": [], "states": [], "logs": []}
+        out = {"frames": [], "segs": [], "states": [], "logs": []}
         # reset env to a random initial slice
         env.reset()
-        frame = env.sample_plane(env.state, preprocess=True)
+        frame, seg = env.sample_plane(env.state, preprocess=True, return_seg=True)
         # play an episode greedily
         for _ in tqdm(range(1, steps+1), desc="testing..."):
             # add to output dict  
             out["frames"].append(frame.squeeze())
+            out["segs"].append(seg.squeeze())
             out["states"].append(env.state)
             out["logs"].append({log: r for log,r in env.current_logs.items()})
             # get action from current state
             actions = self.act(frame, local_model)  
             # observe transition and next_slice
-            transition, next_frame = env.step(actions, preprocess=True)
+            transition, next_frame, next_seg = env.step(actions, preprocess=True, return_seg=True)
             # set slice to next slice
             frame = next_frame
+            seg = next_seg
         # add logs for wandb to out
         out["wandb"] = {log+"_test": r for log,r in env.logs.items()}
         return out

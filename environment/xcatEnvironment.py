@@ -2,13 +2,18 @@ from environment.baseEnvironment import BaseEnvironment
 from rewards.rewards import *
 import numpy as np
 import SimpleITK as sitk
+from skimage.draw import polygon, circle
 import os
 
 def setup_environment(config):
-    if not config.location_aware:
+    if not config.location_aware and not config.ct2us_model_name:
         env = SingleVolumeEnvironment(config)
-    else:
+    elif not config.location_aware and config.ct2us_model_name: 
+        env = CT2USSingleVolumeEnvironment(config)
+    elif config.location_aware and not config.ct2us_model_name:
         env = LocationAwareSingleVolumeEnvironment(config)
+    else:
+        raise NotImplementedError()
     return env
 
 class SingleVolumeEnvironment(BaseEnvironment):
@@ -149,7 +154,7 @@ class SingleVolumeEnvironment(BaseEnvironment):
             self.logs[r]+=shared_rewards[r]   
         return total_rewards[..., np.newaxis].astype(np.float)
 
-    def step(self, action, preprocess=False):
+    def step(self, action, preprocess=False, return_seg=False):
         """Perform an input action (discrete action), observe the next state and reward.
         Params:
         ==========
@@ -166,7 +171,10 @@ class SingleVolumeEnvironment(BaseEnvironment):
         # update the current state
         self.state = next_state
         # return transition and the next_slice which has already been sampled
-        return (state, action, rewards, next_state), next_slice
+        if return_seg:
+            return (state, action, rewards, next_state), next_slice, segmentation
+        else:
+            return (state, action, rewards, next_state), next_slice
     
     def reset(self):
         # sample a random plane (defined by 3 points) to start the episode from
@@ -429,6 +437,46 @@ class LocationAwareSingleVolumeEnvironment(SingleVolumeEnvironment):
         else:
             return plane
 
+class CT2USSingleVolumeEnvironment(SingleVolumeEnvironment):
+    def __init__(self, config):
+        SingleVolumeEnvironment.__init__(self, config)
+        # load the queried CT2US model
+        self.CT2USmodel = get_model(config.model_name).to(config.device)
+    
+    # we need to rewrite the sample_plane function, everything else should work fine
+    def sample_plane(self, state, return_seg=False, oob_black=True, preprocess=False):
+        """ function to sample a plane from 3 3D points (state) and convert it to US
+        Params:
+        ==========
+            state (np.ndarray of shape (3,3)): v-stacked 3D points that will define a particular plane in the CT volume.
+            return_seg (bool): flag if we wish to return the corresponding segmentation map. (default=False)
+            oob_black (bool): flack if we wish to mask out of volume pixels to black. (default=True)
+            preprocess (bool): if to preprocess the plane before returning it (unsqueeze to BxCxHxW, normalize and/or add positional binary maps) 
+            returns -> plane (torch.tensor of shape (1, 1, self.sy, self.sx)): corresponding plane sampled from the CT volume transformed to US
+                       seg (optional, np.ndarray of shape (self.sy, self.sx)): segmentation map of the sampled plane
+        """
+        # sample the CT plane and the segmentation map calling the parent sample_plane method
+        planeCT, seg = super().sample_plane(state=next_state, return_seg=True, oob_black=oob_black, preprocess=True)
+
+        # preprocess the CT slice before sending to transformation network
+        planeCT = mask_array(planeCT)
+        planeCT = torch.tensor(planeCT).to(self.config.device)
+
+        # transform the image to US (do not store gradients)
+        with torch.no_grad():
+            planeUS = self.CT2USmodel(planeCT).detach().cpu().numpy()
+        
+        # image is already unsqueezed and normalized, if we did not want to preprocess the image then squeeze 
+        # and multiply by 255 to undo preprocessing
+        if not preprocess:
+            planeUS = planeUS.squeeze()*255
+        
+        if return_seg:
+            return planeUS, seg
+        else:
+            return planeUS
+
+
 # ==== HELPER FUNCTIONS ====
 
 def intensity_scaling(ndarr, pmin=None, pmax=None, nmin=None, nmax=None):
@@ -452,6 +500,31 @@ def draw_sphere(arr, point, r=3, color = 255):
 def is_in_volume(volume, point):
     sx, sy, sz = volume.shape
     return  (point[0] >= 0 and point[0] < sx) and (point[1] >= 0 and point[1] < sy) and (point[2] >= 0 and point[2] < sz)
+
+# draw a mask on US image
+def mask_array(arr):
+    assert arr.ndim == 2
+    sx, sy = arr.shape # H, W
+    mask = np.ones_like(arr)*1
+    # Bottom circular shape
+    rr, cc = circle(0, int(sy//2), sy-1)
+    rr[rr >= sy] = sy-1
+    cc[cc >= sy] = sy-1
+    rr[rr < 0] = 0
+    cc[cc < 0] = 0
+    mask[rr, cc] = 0
+    # Left triangle
+    r = (0, 0, sx*5/9)
+    c = (0, sy//2, 0)
+    rr, cc = polygon(r, c)
+    mask[rr, cc] = 1
+    # Right triangle
+    r = (0,      0, sx*5/9)
+    c = (sy//2, sy-1, sy-1)
+    rr, cc = polygon(r, c)
+    mask[rr, cc] = 1
+    mask = (1-mask).astype(np.bool)
+    return mask*arr
 
 # Trick function to enable one-line conditions
 def doNothing():

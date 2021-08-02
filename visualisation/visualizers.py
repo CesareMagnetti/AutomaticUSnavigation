@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d.axes3d import Axes3D
 import matplotlib.animation as animation
 from moviepy.editor import ImageSequenceClip
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import os
 
 def plot_linear_cube(ax, x, y, z, dx, dy, dz, color='black'):
@@ -124,5 +125,12 @@ class Visualizer():
             line_ani = animation.FuncAnimation(fig, update, len(states), fargs=(states, frames, logs, plot_objects))
             line_ani.save(fname, fps=fps)
 
+    def render_frames_with_segmentations(self, planes, segs, fname, fps=10):
+        frames = [np.hstack([plane, seg]) for plane, seg in zip(planes, segs)]
+        frames = [elem[..., np.newaxis]*np.ones(3)*255 for elem in frames]
+        # generate the gif
+        clip = ImageSequenceClip(frames, fps=fps)
+        print(os.path.join(self.savedir, fname))
+        clip.write_gif(os.path.join(self.savedir, fname), fps=fps)
 
 
