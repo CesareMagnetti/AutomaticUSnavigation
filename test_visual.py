@@ -1,5 +1,5 @@
 from agent.agent import Agent
-from environment.xcatEnvironment import setup_environment
+from utils import setup_environment
 from networks.Qnetworks import setup_networks
 from options.options import gather_options, print_options
 from visualisation.visualizers import Visualizer
@@ -28,4 +28,4 @@ if __name__ == "__main__":
         print("test run: [{}]/[{}]".format(run+1, config.n_runs))
         out = agent.test_agent(config.n_steps, env, qnetwork)
         #visualizer.render_full(out, fname = os.path.join(agent.results_dir, "test", "{}_{}.gif".format(config.fname, run)))
-        visualizer.render_frames_with_segmentations(out["frames"], out["segs"], fname="trajectoryWithSegmentations.gif")
+        visualizer.render_frames_with_segmentations(out["frames"], out["segs"], fname="US_trajectory.gif")

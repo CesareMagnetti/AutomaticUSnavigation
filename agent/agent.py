@@ -81,15 +81,14 @@ class Agent(BaseAgent):
             env (environment/* instance): the environment the agent will interact with while testing.
             local_model (PyTorch model): pytorch network that will be tested.
         """
-        out = {"frames": [], "segs": [], "states": [], "logs": []}
+        out = {"frames": [], "states": [], "logs": []}
         # reset env to a random initial slice
         env.reset()
-        frame, seg = env.sample_plane(env.state, preprocess=True, return_seg=True)
+        frame, seg = env.sample_plane(env.state, preprocess=True, return_seg=False)
         # play an episode greedily
         for _ in tqdm(range(1, steps+1), desc="testing..."):
             # add to output dict  
             out["frames"].append(frame.squeeze())
-            out["segs"].append(seg.squeeze())
             out["states"].append(env.state)
             out["logs"].append({log: r for log,r in env.current_logs.items()})
             # get action from current state

@@ -10,7 +10,7 @@ def gather_options(phase="train"):
     parser.add_argument('--name', '-n', type=str, help='name of the experiment.')
     parser.add_argument('--dataroot', '-r',  type=str, default="/vol/biomedic3/hjr119/DATA/XCAT_VOLUMES/", help='path to the XCAT CT volumes.')
     parser.add_argument('--volume_ids', '-vol_ids', type=str, default='samp0', help='filename(s) of the CT volume(s) comma separated.')
-    parser.add_argument('--ct2us_model_name', '-model', type=str, default=None,
+    parser.add_argument('--ct2us_model_name', '-model', type=str, default="bestCT2US",
                         help='filename for the state dict of the ct2us model (.pth) file.\navailable models can be found at ./models')
     parser.add_argument('--results_dir', type=str, default='./results/', help='where to save the trajectory.')
     parser.add_argument('--checkpoints_dir', type=str, default='./checkpoints/', help='where to save the trajectory.')
@@ -58,6 +58,9 @@ def gather_options(phase="train"):
     # flag for location aware environment (it will give agents information about their location concatenating binary location maps to the input image through the channel dimension)
     parser.add_argument('--location_aware', action='store_true', help="will emebed the agents with information regarding their relative positions in the sampled slice."\
                                                                     "achieved by concatenating binary location maps along the channels dimension of the input image to the qnetwork.")
+    # flag for CT2US pipeline (will convert slices to US before feeding them to RL agents)
+    parser.add_argument('--CT2US', action='store_true', help="will launch full pipeline navigating in US domain. Else navigation will take place in the CT/XCAT volume.")
+
     # training options (general)
     parser.add_argument('--n_episodes', type=int, default=2000, help="number of episodes to train the agents for.")
     parser.add_argument('--n_steps_per_episode', type=int, default=250, help="number of steps in each episode.")
