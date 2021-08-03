@@ -433,7 +433,7 @@ class CT2USSingleVolumeEnvironment(SingleVolumeEnvironment):
         # load the queried CT2US model
         self.CT2USmodel = get_model(config.ct2us_model_name).to(config.device)
     
-    # we need to rewrite the sample_plane function, everything else should work fine
+    # we need to rewrite the sample_plane and step functions, everything else should work fine
     def sample_plane(self, state, return_seg=False, oob_black=True, preprocess=False, return_ct = False):
         """ function to sample a plane from 3 3D points (state) and convert it to US
         Params:
@@ -461,16 +461,40 @@ class CT2USSingleVolumeEnvironment(SingleVolumeEnvironment):
         if not preprocess:
             planeUS = planeUS.squeeze()*255
         
-        ret = {"frameUS": planeUS}
-        if return_seg:
-            ret["seg"] = seg
-        if return_ct:
-            ret["frameCT"] = planeCT.detach().cpu().numpy().squeeze()
-
-        if len(ret)>1:
-            return ret
-        else:
+        if not return_seg and not return_ct:
             return planeUS
+        elif return_seg and not return_ct:
+            return planeUS, seg
+        elif not return_seg and return_ct:
+            return planeUS, planeCT.detach().cpu().numpy()
+        else:
+            return planeUS, seg, planeCT.detach().cpu().numpy()
+    
+    def step(self, action, preprocess=False, return_seg=False, return_ct=False):
+        """Perform an input action (discrete action), observe the next state and reward.
+        Params:
+        ==========
+            action (int): discrete action (see baseEnvironment.mapActionToIncrement())
+        """
+        # get the increment corresponding to this action
+        increment = np.vstack([self.mapActionToIncrement(act) for act in action])
+        # step into the next state
+        state = self.state
+        next_state = state + increment
+        # observe the next plane and get the reward from segmentation map
+        next_slice, segmentation, next_sliceCT = self.sample_plane(state=next_state, return_seg=True, return_ct=True, preprocess=preprocess)
+        rewards = self.get_reward(segmentation, next_state, increment)
+        # update the current state
+        self.state = next_state
+        # return transition and the next_slice which has already been sampled        
+        if not return_seg and not return_ct:
+            return (state, action, rewards, next_state), next_slice
+        elif return_seg and not return_ct:
+            return (state, action, rewards, next_state), next_slice, segmentation
+        elif not return_seg and return_ct:
+            return (state, action, rewards, next_state), next_slice, next_sliceCT
+        else:
+            return (state, action, rewards, next_state), next_slice, segmentation, next_sliceCT
 
 
 # ==== HELPER FUNCTIONS ====

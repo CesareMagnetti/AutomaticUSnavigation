@@ -125,8 +125,8 @@ class Visualizer():
             line_ani = animation.FuncAnimation(fig, update, len(states), fargs=(states, frames, logs, plot_objects))
             line_ani.save(fname, fps=fps)
 
-    def render_frames_with_segmentations(self, planes, segs, fname, fps=10):
-        frames = [np.hstack([plane, seg]) for plane, seg in zip(planes, segs)]
+    def render_frames_double(self, first, second, fname, fps=10):
+        frames = [np.hstack([f, s]) for f, s in zip(first, second)]
         frames = [elem[..., np.newaxis]*np.ones(3)*255 for elem in frames]
         # generate the gif
         clip = ImageSequenceClip(frames, fps=fps)
