@@ -51,8 +51,6 @@ def gather_options(phase="train"):
 
     # random seed for reproducibility
     parser.add_argument('--seed', type=int, default=1, help="random seed for reproducibility.")
-    # multi-processing
-    parser.add_argument('--n_processes', type=int, default=1, help="number of processes to launch together.")
     # flag for easier objective
     parser.add_argument('--easy_objective', action='store_true', help="starts the agent in a plane that should be close to a 4-chamber view.")
     # flag for location aware environment (it will give agents information about their location concatenating binary location maps to the input image through the channel dimension)

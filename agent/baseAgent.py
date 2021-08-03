@@ -2,6 +2,7 @@
 import torch, os, six, random
 import numpy as np
 from abc import abstractmethod, ABCMeta
+from agent.trainers import *
 
 @six.add_metaclass(ABCMeta)
 class BaseAgent(object):
@@ -22,8 +23,29 @@ class BaseAgent(object):
             os.makedirs(self.checkpoints_dir)
         if not os.path.exists(self.results_dir):
             os.makedirs(self.results_dir)
+
         # setup the action size and the number of agents
         self.n_agents, self.action_size = config.n_agents, config.action_size
+
+        # place holder for steps and episode counts
+        self.t_step, self.episode = 0, 0
+        # starting epsilon value for exploration/exploitation trade off
+        self.eps = config.eps_start
+        # formulate a suitable decay factor for epsilon given the queried options.
+        self.EPS_DECAY_FACTOR = (config.eps_end/config.eps_start)**(1/int(config.stop_decay*config.n_episodes))
+        # starting beta value for bias correction in prioritized experience replay
+        self.beta = config.beta_start
+        # formulate a suitable decay factor for beta given the queried options. (since beta_end>beta_start, this will actually be an increase factor)
+        # annealiate beta to 1 (or beta_end) as we go further in the episode (original P.E.R paper reccommends this)
+        self.BETA_DECAY_FACTOR = (config.beta_end/config.beta_start)**(1/int(config.stop_decay*config.n_episodes))
+        # set the trainer algorithm
+        if config.trainer.lower() in ["deepqlearning", "qlearning", "dqn"]:
+            self.trainer = PrioritizedDeepQLearning(gamma=config.gamma)
+        elif config.trainer.lower() in ["doubledeepqlearning", "doubleqlearning", "doubledqn", "ddqn"]:
+            self.trainer = PrioritizedDoubleDeepQLearning(gamma=config.gamma)
+        else:
+            raise NotImplementedError('unknown ``trainer`` configuration: {}. available options: [DQN, DoubleDQN]'.format(config.trainer))
+
         # save the config for any options we might need
         self.config = config
     

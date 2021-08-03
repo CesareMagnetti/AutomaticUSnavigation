@@ -1,12 +1,9 @@
-
 from agent.baseAgent import BaseAgent
-from agent.trainers import *
 import numpy as np
 import torch, os, wandb
-from moviepy.editor import ImageSequenceClip
 from tqdm import tqdm
 
-class Agent(BaseAgent):
+class SingleVolumeAgent(BaseAgent):
     """Interacts with and learns from a single environment volume."""
     def __init__(self, config):
         """Initialize an Agent object.
@@ -16,24 +13,7 @@ class Agent(BaseAgent):
         """
         # Initialize the base class
         BaseAgent.__init__(self, config)        
-        # place holder for steps and episode counts
-        self.t_step, self.episode = 0, 0
-        # starting epsilon value for exploration/exploitation trade off
-        self.eps = self.config.eps_start
-        # formulate a suitable decay factor for epsilon given the queried options.
-        self.EPS_DECAY_FACTOR = (config.eps_end/config.eps_start)**(1/int(config.stop_decay*config.n_episodes))
-        # starting beta value for bias correction in prioritized experience replay
-        self.beta = self.config.beta_start
-        # formulate a suitable decay factor for beta given the queried options. (since beta_end>beta_start, this will actually be an increase factor)
-        # annealiate beta to 1 (or beta_end) as we go further in the episode (original P.E.R paper reccommends this)
-        self.BETA_DECAY_FACTOR = (config.beta_end/config.beta_start)**(1/int(config.stop_decay*config.n_episodes))
-        # set the trainer algorithm
-        if config.trainer.lower() in ["deepqlearning", "qlearning", "dqn"]:
-            self.trainer = PrioritizedDeepQLearning(gamma=config.gamma)
-        elif config.trainer.lower() in ["doubledeepqlearning", "doubleqlearning", "doubledqn", "ddqn"]:
-            self.trainer = PrioritizedDoubleDeepQLearning(gamma=config.gamma)
-        else:
-            raise NotImplementedError('unknown ``trainer`` configuration: {}. available options: [DQN, DoubleDQN]'.format(config.trainer))
+
 
     def play_episode(self, env, local_model, target_model, optimizer, criterion, buffer):
         """ Plays one episode on an input environment.
@@ -84,7 +64,7 @@ class Agent(BaseAgent):
         out = {"frames": [], "states": [], "logs": []}
         # reset env to a random initial slice
         env.reset()
-        frame, seg = env.sample_plane(env.state, preprocess=True)
+        frame = env.sample_plane(env.state, preprocess=True)
         # play an episode greedily
         for _ in tqdm(range(1, steps+1), desc="testing..."):
             # add to output dict  
@@ -167,3 +147,48 @@ class Agent(BaseAgent):
         else:
             raise ValueError('unknown ``self.target_update``: {}. possible options: [hard, soft]'.format(self.config.target_update))   
         return loss.item()              
+
+
+class MultiVolumeAgent(SingleVolumeAgent):
+    """Interacts with and learns from multiple environment volumes."""
+    def __init__(self, config):
+        """Initialize an Agent object.
+        Params:
+        ======
+            config (argparse object): parser with all training options (see options/options.py)
+        """
+        # Initialize the base class
+        SingleVolumeAgent.__init__(self, config)  
+        # number of environments that we are training on
+        self.n_envs = len(config.volume_ids.split(','))
+        # initialize the environment we are using
+        self.switch_env()
+    
+    def switch_env(self, env_id=None):
+        if env_id:
+            self.env_id = env_id
+        else:
+            self.env_id = np.random.randint(self.n_envs)
+    
+    # rewrite the play episode function
+    def play_episode(self, envs, local_model, target_model, optimizer, criterion, buffers, env_id=None):
+        """ Plays one episode on an input environment.
+        Params:
+        ==========
+            envs list[environment/* instance]: list of environments the agent will interact with while training.
+            local_model (PyTorch model): pytorch network that will be trained using a particular training routine (i.e. DQN)
+            target_model (PyTorch model): pytorch network that will be used as a target to estimate future Qvalues. 
+                                          (it is a hard copy or a running average of the local model, helps against diverging)
+            optimizer (PyTorch optimizer): optimizer to update the local network weights.
+            criterion (PyTorch Module): loss to minimize in order to train the local network.
+            buffers list[buffer/* object]: list of replay buffers (one per environment)
+            env_id (int, optional): which environment to use, if None chose at random.
+        Returns logs (dict): all relevant logs acquired throughout the episode.
+        """  
+        # set the current environment and buffers used
+        self.switch_env(env_id)
+        env, buffer = envs[self.env_id], buffers[self.env_id]
+        # call the parent play_episode class to play an episode with these environment and buffer
+        logs = super().play_episode(env, local_model, target_model, optimizer, criterion, buffer)
+        logs["env_id"] = self.env_id
+        return logs

@@ -50,7 +50,7 @@ class SingleVolumeEnvironment(BaseEnvironment):
         if abs(config.areaRewardWeight) > 0:
             self.logged_rewards.append("areaReward")
             self.rewards["areaReward"] = AreaReward(config.areaRewardWeight, self.sx*self.sy)
-        if abs(config.areaRewardWeight) > 0:
+        if abs(config.oobReward) > 0:
             for i in range(config.n_agents):
                 self.logged_rewards.append("oobReward_%d"%(i+1))
             self.rewards["oobReward"] = OutOfBoundaryReward(config.oobReward, self.sx, self.sy, self.sz)
@@ -219,7 +219,7 @@ class LocationAwareSingleVolumeEnvironment(SingleVolumeEnvironment):
                           we will load the volume at position ``vol_id`` (default=0)               
         """
         # initialize environment
-        SingleVolumeEnvironment.__init__(self, config)
+        SingleVolumeEnvironment.__init__(self, config, vol_id)
         # generate cube for agent position retrieval
         self.agents_cube = np.zeros_like(self.Volume)
     
@@ -307,9 +307,10 @@ class LocationAwareSingleVolumeEnvironment(SingleVolumeEnvironment):
         else:
             return plane
 
+# ===== CT2US ENVIRONMENT =====
 class CT2USSingleVolumeEnvironment(SingleVolumeEnvironment):
-    def __init__(self, config):
-        SingleVolumeEnvironment.__init__(self, config)
+    def __init__(self, config, vol_id=0):
+        SingleVolumeEnvironment.__init__(self, config, vol_id)
         # load the queried CT2US model
         self.CT2USmodel = get_model(config.ct2us_model_name).to(config.device)
     

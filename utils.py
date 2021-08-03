@@ -6,7 +6,7 @@ import torch.optim as optim
 import torch.nn as nn
 
 from environment.xcatEnvironment import *
-from agent.agent import Agent
+from agent.agent import MultiVolumeAgent
 from buffer.buffer import *
 from visualisation.visualizers import Visualizer
 
@@ -29,24 +29,25 @@ def train(config, local_model, target_model, wandb_entity="us_navigation", sweep
 
         # manual seed
         torch.manual_seed(config.seed + rank) 
-        # 1. instanciate environment
-        env = setup_environment(config)
+        # 1. instanciate environment(s)
+        envs = setup_environment(config)
         # 2. instanciate agent
-        agent = Agent(config)
+        agent = MultiVolumeAgent(config)
         # 3. instanciate optimizer for local_network
         optimizer = optim.Adam(local_model.parameters(), lr=config.learning_rate)
         # 4. instanciate criterion
         criterion = setup_criterion(config)
-        # 5. instanciate replay buffer
-        buffer = PrioritizedReplayBuffer(config.buffer_size, config.batch_size, config.alpha)
+        # 5. instanciate replay buffer(s) (one per environment)
+        buffers = [PrioritizedReplayBuffer(config.buffer_size, config.batch_size, config.alpha),]*len(envs)
         # 6. instanciate visualizer
         visualizer = Visualizer(agent.results_dir)
 
         # ==== LAUNCH TRAINING ====
         # 1. launch exploring steps if needed
         if agent.config.exploring_steps>0:
-                print("random walk to collect experience...")
-                env.random_walk(config.exploring_steps, buffer)  
+                for idx, (env,buffer) in enumerate(zip(envs, buffers), 1):
+                    print("[{}]/[{}] random walk to collect experience...".format(idx, len(envs)))
+                    env.random_walk(int(config.exploring_steps/len(envs)), buffer)  
         # 2. initialize wandb for logging purposes
         if config.wandb in ["online", "offline"]:
                 wandb.login()
@@ -56,7 +57,7 @@ def train(config, local_model, target_model, wandb_entity="us_navigation", sweep
         wandb.watch(local_model, criterion, log="all", log_freq=config.log_freq)
         # 4. start training
         for episode in tqdm(range(config.n_episodes), desc="training..."):
-                logs = agent.play_episode(env, local_model, target_model, optimizer, criterion, buffer)
+                logs = agent.play_episode(envs, local_model, target_model, optimizer, criterion, buffers) # selects env at random
                 # send logs to weights and biases
                 if episode % config.log_freq == 0:
                         wandb.log(logs, commit=True)
@@ -66,8 +67,8 @@ def train(config, local_model, target_model, wandb_entity="us_navigation", sweep
                                 print("saving latest model weights...")
                                 local_model.save(os.path.join(agent.checkpoints_dir, "latest.pth"))
                                 target_model.save(os.path.join(agent.checkpoints_dir, "episode%d.pth"%episode))
-                        # test the greedy policy and send logs
-                        out = agent.test_agent(config.n_steps_per_episode, env, local_model)
+                        # test the greedy policy on a random environment and send logs to wandb
+                        out = agent.test_agent(config.n_steps_per_episode, envs[np.random.randint(agent.n_envs)], local_model)
                         wandb.log(out["wandb"], commit=True)
                         # animate the trajectory followed by the agent in the current episode
                         visualizer.render_frames(out["frames"], "episode%d.gif"%episode)
@@ -82,15 +83,17 @@ def train(config, local_model, target_model, wandb_entity="us_navigation", sweep
         wandb.save(os.path.join(agent.checkpoints_dir, "DQN.onnx"))
 
 def setup_environment(config):
-    if not config.location_aware and not config.CT2US:
-        env = SingleVolumeEnvironment(config)
-    elif not config.location_aware and config.CT2US: 
-        env = CT2USSingleVolumeEnvironment(config)
-    elif config.location_aware and not config.CT2US:
-        env = LocationAwareSingleVolumeEnvironment(config)
-    else:
-        raise NotImplementedError()
-    return env
+    envs = []
+    for vol_id in range(len(config.volume_ids.split(','))):
+        if not config.location_aware and not config.CT2US:
+            envs.append(SingleVolumeEnvironment(config, vol_id=vol_id))
+        elif not config.location_aware and config.CT2US: 
+            envs.append(CT2USSingleVolumeEnvironment(config, vol_id=vol_id))
+        elif config.location_aware and not config.CT2US:
+            envs.append(LocationAwareSingleVolumeEnvironment(config, vol_id=vol_id))
+        else:
+            raise NotImplementedError()
+    return envs
 
 def setup_criterion(config):
     if "mse" in config.loss.lower():
