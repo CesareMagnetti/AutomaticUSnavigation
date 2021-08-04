@@ -95,7 +95,7 @@ class SimpleQNetwork(nn.Module):
         self.seed = torch.manual_seed(seed)
 
         # build convolutional backbone
-        cnn = [ConvBlock(state_size[0], num_features, 3, downsampling, 1, dropout)]
+        cnn = [ConvBlock(state_size[0], num_features, 3, downsampling, 1, dropout, batchnorm)]
         for i in range(Nblocks-1):
             cnn.append(ConvBlock(num_features*2**i, num_features*2**(i+1), 3, downsampling, 1, dropout, batchnorm))
         cnn.append(nn.Conv2d(num_features*2**(i+1), num_features*2**(i+2), 3, downsampling, 1))

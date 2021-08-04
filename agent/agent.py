@@ -66,17 +66,18 @@ class SingleVolumeAgent(BaseAgent):
         env.reset()
         frame = env.sample_plane(env.state, preprocess=True)
         # play an episode greedily
-        for _ in tqdm(range(1, steps+1), desc="testing..."):
-            # add to output dict  
-            out["frames"].append(frame.squeeze())
-            out["states"].append(env.state)
-            out["logs"].append({log: r for log,r in env.current_logs.items()})
-            # get action from current state
-            actions = self.act(frame, local_model)
-            # observe transition and next_slice
-            transition, next_frame = env.step(actions, preprocess=True)
-            # set slice to next slice
-            frame = next_frame
+        with torch.no_grad():
+            for _ in tqdm(range(1, steps+1), desc="testing..."):
+                # add to output dict  
+                out["frames"].append(frame.squeeze())
+                out["states"].append(env.state)
+                out["logs"].append({log: r for log,r in env.current_logs.items()})
+                # get action from current state
+                actions = self.act(frame, local_model)
+                # observe transition and next_slice
+                transition, next_frame = env.step(actions, preprocess=True)
+                # set slice to next slice
+                frame = next_frame
         # add logs for wandb to out
         out["wandb"] = {log+"_test": r for log,r in env.logs.items()}
         return out
@@ -94,19 +95,20 @@ class SingleVolumeAgent(BaseAgent):
         env.reset()
         frame, frameCT = env.sample_plane(env.state, preprocess=True, return_ct=True)
         # play an episode greedily
-        for _ in tqdm(range(1, steps+1), desc="testing..."):
-            # add to output dict  
-            out["frames"].append(frame.squeeze())
-            out["framesCT"].append(frameCT.squeeze())
-            out["states"].append(env.state)
-            out["logs"].append({log: r for log,r in env.current_logs.items()})
-            # get action from current state
-            actions = self.act(frame, local_model)  
-            # observe transition and next_slice
-            transition, next_frame, next_frameCT = env.step(actions, preprocess=True, return_ct=True)
-            # set slice to next slice
-            frame = next_frame
-            frameCT = next_frameCT
+        with torch.no_grad():
+            for _ in tqdm(range(1, steps+1), desc="testing..."):
+                # add to output dict  
+                out["frames"].append(frame.squeeze())
+                out["framesCT"].append(frameCT.squeeze())
+                out["states"].append(env.state)
+                out["logs"].append({log: r for log,r in env.current_logs.items()})
+                # get action from current state
+                actions = self.act(frame, local_model)  
+                # observe transition and next_slice
+                transition, next_frame, next_frameCT = env.step(actions, preprocess=True, return_ct=True)
+                # set slice to next slice
+                frame = next_frame
+                frameCT = next_frameCT
         # add logs for wandb to out
         out["wandb"] = {log+"_test": r for log,r in env.logs.items()}
         return out

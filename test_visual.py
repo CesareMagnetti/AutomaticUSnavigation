@@ -17,8 +17,9 @@ if __name__ == "__main__":
     envs = setup_environment(config)
     # 3. instanciate agent
     agent = MultiVolumeAgent(config)
-    # 4. instanciate Qnetwork
+    # 4. instanciate Qnetwork and set it in eval mode 
     qnetwork, _ = setup_networks(config)
+    qnetwork.eval()
     # 5. instanciate visualizer to plot results    
     visualizer  = Visualizer(agent.results_dir)
     if not os.path.exists(os.path.join(agent.results_dir, "test")):
