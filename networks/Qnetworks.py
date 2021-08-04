@@ -8,13 +8,13 @@ def setup_networks(config):
     # 1. instanciate the Qnetworks
     if config.default_Q is None:
         params = [(nchannels, config.load_size, config.load_size), config.action_size, config.n_agents, config.seed, config.n_blocks_Q,
-                   config.downsampling_Q, config.n_features_Q, config.dropout_Q]
+                   config.downsampling_Q, config.n_features_Q, config.dropout_Q, config.batchnorm_Q]
     elif config.default_Q.lower() == "small":
         params = [(nchannels, config.load_size, config.load_size), config.action_size, config.n_agents, config.seed, 3,
-                   4, 32, config.dropout_Q]
+                   4, 32, config.dropout_Q, config.batchnorm_Q]
     elif config.default_Q.lower() == "large":
         params = [(nchannels, config.load_size, config.load_size), config.action_size, config.n_agents, config.seed, 6,
-                   2, 4, config.dropout_Q]
+                   2, 4, config.dropout_Q, config.batchnorm_Q]
     else:
         raise ValueError('unknown param ``--default_Q``: {}. available options: [small, large]'.format(config.default_Q))
 
@@ -33,11 +33,16 @@ def setup_networks(config):
 # ===== BUILDING BLOCKS =====
 
 class ConvBlock(nn.Module):
-    def __init__(self, inChannels, outChannels, kernel_size, stride, padding, dropout):
+    def __init__(self, inChannels, outChannels, kernel_size, stride, padding, dropout, batchnorm):
         super(ConvBlock, self).__init__()
-        block = [nn.Conv2d(inChannels, outChannels, kernel_size, stride, padding),
-                 nn.BatchNorm2d(outChannels),
-                 nn.ReLU(inplace=True)]
+        # conv layer
+        block = [nn.Conv2d(inChannels, outChannels, kernel_size, stride, padding)]
+        # batchnorm layer
+        if batchnorm:
+            block+=[nn.BatchNorm2d(outChannels)]
+        # activation
+        block+=[nn.ReLU(inplace=True)]
+        # dropout
         if dropout:
             block+=[nn.Dropout(0.5)]
         self.block = nn.Sequential(*block)
@@ -46,13 +51,19 @@ class ConvBlock(nn.Module):
         return self.block(x)
 
 class HeadBlock(nn.Module):
-    def __init__(self, inFeatures, actionSize, dropout):
+    def __init__(self, inFeatures, actionSize, dropout, batchnorm):
         super(HeadBlock, self).__init__()
-        block = [nn.Linear(inFeatures, inFeatures//4),
-                 nn.BatchNorm1d(inFeatures//4),
-                 nn.ReLU()]
+        # linear layer
+        block = [nn.Linear(inFeatures, inFeatures//4)]
+        # batchnorm layer
+        if batchnorm:
+            block+=[nn.BatchNorm1d(inFeatures//4)]
+        # activation
+        block+=[nn.ReLU()]
+        # dropout
         if dropout:
             block+=[nn.Dropout(0.5)]
+        # output layer
         block+=[nn.Linear(inFeatures//4, actionSize)]
         self.block = nn.Sequential(*block)
 
@@ -65,7 +76,7 @@ class SimpleQNetwork(nn.Module):
     """
     very simple CNN backbone followed by N heads, one for each agent.
     """
-    def __init__(self, state_size, action_size, Nheads, seed, Nblocks=6, downsampling=2, num_features=4, dropout=True):
+    def __init__(self, state_size, action_size, Nheads, seed, Nblocks=6, downsampling=2, num_features=4, dropout=True, batchnorm=True):
         """
         params
         ======
@@ -75,8 +86,9 @@ class SimpleQNetwork(nn.Module):
             action_size (int): number of actions each agent has to take (i.e. +/- movement in each of 3 dimensions -> 6 actions)
             downsampling (int): downsampling factor of each convolutional bock
             num_features (int): number of filters in the first convolutional block, each following block
-                                will go from num_features*2**i  -->  num_features*2**(i+1).
+                                will go from num_features*2**i  -->  num_features*2**(i+1)
             dropout (bool): if you want to use dropout (p=0.5)
+            batchnorm (bool): if you want to use batch normalization
                                  
         """
         super(SimpleQNetwork, self).__init__()
@@ -85,7 +97,7 @@ class SimpleQNetwork(nn.Module):
         # build convolutional backbone
         cnn = [ConvBlock(state_size[0], num_features, 3, downsampling, 1, dropout)]
         for i in range(Nblocks-1):
-            cnn.append(ConvBlock(num_features*2**i, num_features*2**(i+1), 3, downsampling, 1, dropout))
+            cnn.append(ConvBlock(num_features*2**i, num_features*2**(i+1), 3, downsampling, 1, dropout, batchnorm))
         cnn.append(nn.Conv2d(num_features*2**(i+1), num_features*2**(i+2), 3, downsampling, 1))
         self.cnn = nn.Sequential(*cnn)
 
@@ -95,7 +107,7 @@ class SimpleQNetwork(nn.Module):
         # build N linear heads, one for each agent
         heads = []
         for i in range(Nheads):
-            heads.append(HeadBlock(self.num_linear_features, action_size, dropout))
+            heads.append(HeadBlock(self.num_linear_features, action_size, dropout, batchnorm))
         self.heads = nn.ModuleList(heads)
 
     def forward(self, x):
