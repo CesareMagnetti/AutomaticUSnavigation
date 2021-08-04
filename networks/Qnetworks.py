@@ -8,13 +8,13 @@ def setup_networks(config):
     # 1. instanciate the Qnetworks
     if config.default_Q is None:
         params = [(nchannels, config.load_size, config.load_size), config.action_size, config.n_agents, config.seed, config.n_blocks_Q,
-                   config.downsampling_Q, config.n_features_Q, config.dropout_Q, config.batchnorm_Q]
+                   config.downsampling_Q, config.n_features_Q, not config.no_dropout_Q, not config.no_batchnorm_Q]
     elif config.default_Q.lower() == "small":
         params = [(nchannels, config.load_size, config.load_size), config.action_size, config.n_agents, config.seed, 3,
-                   4, 32, config.dropout_Q, config.batchnorm_Q]
+                   4, 32, not config.no_dropout_Q, not config.no_batchnorm_Q]
     elif config.default_Q.lower() == "large":
         params = [(nchannels, config.load_size, config.load_size), config.action_size, config.n_agents, config.seed, 6,
-                   2, 4, config.dropout_Q, config.batchnorm_Q]
+                   2, 4, not config.no_dropout_Q, not config.no_batchnorm_Q]
     else:
         raise ValueError('unknown param ``--default_Q``: {}. available options: [small, large]'.format(config.default_Q))
 
