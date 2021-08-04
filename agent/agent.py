@@ -192,3 +192,21 @@ class MultiVolumeAgent(SingleVolumeAgent):
         logs = super().play_episode(env, local_model, target_model, optimizer, criterion, buffer)
         logs["env_id"] = self.env_id
         return logs
+    
+    # rewrite the test agent function
+    def test_agent(self, steps, envs, local_model):
+        """Test the greedy policy learned by the agent on some test environments and returns a dict with useful metrics/logs.
+        Params:
+        ==========
+            steps (int): number of steps to test the agent for.
+            envs list[environment/* instance] or environment/* instance: list of environments or a single environment.
+            local_model (PyTorch model): pytorch network that will be tested.
+        """
+        if not isinstance(envs, (list, tuple)):
+            envs = [envs] 
+        logs = {}
+        # test all queried envs   
+        for idx, env in enumerate(envs):
+            print("testing env: {} ([{}]/[{}]) ...".format(self.config.volume_ids.split(',')[idx], idx+1, len(envs)))
+            logs[self.config.volume_ids.split(',')[idx]] = super().test_agent(steps, env, local_model)
+        return logs

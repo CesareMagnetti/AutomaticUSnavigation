@@ -63,9 +63,13 @@ class Visualizer():
             # gather useful information
             # 1. rearrange logs
             logs = {key: [] for key in out["logs"][0]}
+            logs["total"] = []
             for log in out["logs"]:
+                total = 0
                 for key, item in log.items():
+                    total+=item
                     logs[key].append(item)
+                logs["total"].append(total)
             for key in logs:
                 logs[key] = np.array(logs[key])
             # 2. stack the states in a single numpy array
@@ -75,7 +79,7 @@ class Visualizer():
             if len(out["frames"][0].shape) == 2:
                 frames = out["frames"]
             elif len(out["frames"][0].shape) == 3:
-                frames = [elem[0, ...] for elem in out["frames"]]
+                frames = [np.vstack([np.hstack(elem[:2, ...]), np.hstack(elem[2:, ...])]) for elem in out["frames"]]
             else:
                 raise ValueError("entries in out['frames'] have wrong dimensionality.")
 
