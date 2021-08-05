@@ -24,21 +24,11 @@ class Visualizer():
             os.makedirs(self.savedir)
         
     def render_frames(self, frames, fname, fps=10):
-        # images could be CxHxW if --location_aware, retain only the first channel.
         if len(frames[0].shape) > 2:
-            # extract anatomy planes
-            planes = [elem[0, ...] for elem in frames]
-            planes = [elem[..., np.newaxis]*np.ones(3)*255 for elem in planes]
-            # extract location maps
-            locs1 = [elem[1, ...]*255 for elem in frames]
-            locs1 = [elem[..., np.newaxis]*np.ones(3)*255 for elem in locs1]
-            locs2 = [elem[2, ...]*255 for elem in frames]
-            locs2 = [elem[..., np.newaxis]*np.ones(3)*255 for elem in locs2]
-            locs3 = [elem[3, ...]*255 for elem in frames]
-            locs3 = [elem[..., np.newaxis]*np.ones(3)*255 for elem in locs3]
-            # stack the anatomy planes to the location maps horizontally for each frame
-            frames = [np.hstack([plane,loc1,loc2,loc3]) for plane,loc1,loc2,loc3 in zip(planes,locs1,locs2,locs3)]
+            # if location aware we have 4 channels (1 anatomical slice + 3 location maps, concatenate as 2x2)
+            frames = [np.vstack([np.hstack(elem[:2, ...]), np.hstack(elem[2:, ...])]) for elem in frames]
         else:
+            # if not location aware we have 2D planes
             frames = [elem[..., np.newaxis]*np.ones(3)*255 for elem in frames]
         # generate the gif
         clip = ImageSequenceClip(frames, fps=fps)
@@ -76,10 +66,10 @@ class Visualizer():
             states = np.vstack([state[np.newaxis, ...] for state in out["states"]])
             # 3. process theframes (the slice will always be the 0th channel in the image)
             # images could be CxHxW if location maps are passed.
-            if len(out["frames"][0].shape) == 2:
-                frames = out["frames"]
-            elif len(out["frames"][0].shape) == 3:
-                frames = [np.vstack([np.hstack(elem[:2, ...]), np.hstack(elem[2:, ...])]) for elem in out["frames"]]
+            if len(out["planes"][0].shape) == 2:
+                frames = out["planes"]
+            elif len(out["planes"][0].shape) == 3:
+                frames = [np.vstack([np.hstack(elem[:2, ...]), np.hstack(elem[2:, ...])]) for elem in out["planes"]]
             else:
                 raise ValueError("entries in out['frames'] have wrong dimensionality.")
 
@@ -135,6 +125,6 @@ class Visualizer():
         # generate the gif
         clip = ImageSequenceClip(frames, fps=fps)
         print(os.path.join(self.savedir, fname))
-        clip.write_gif(os.path.join(self.savedir, fname), fps=fps)
+        clip.write_gif(fname, fps=fps)
 
 

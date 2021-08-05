@@ -67,11 +67,13 @@ class BaseEnvironment(object):
         returns -> planes (list), a list containing all sampled planes
         """
         # sample planes using multi-thread
-        planes = []
+        samples = []
         with concurrent.futures.ThreadPoolExecutor() as executor:
             futures = [executor.submit(self.sample_plane, state, **kwargs) for state in states]
-        [planes.append(f.result()) for f in futures]
-        return planes
+        [samples.append(f.result()) for f in futures]
+        # convert list of dicts to dict of lists (assumes all dicts have same keys, which is our case)
+        samples = {k: [dic[k] for dic in samples] for k in samples[0]}
+        return samples
     
     def random_walk(self, n_random_steps, buffer = None, return_trajectory=False):
         """ Starts a random walk to gather observations (s, a, r, s').

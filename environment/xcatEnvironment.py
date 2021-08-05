@@ -2,9 +2,7 @@ from environment.baseEnvironment import BaseEnvironment
 from rewards.rewards import *
 import numpy as np
 import SimpleITK as sitk
-from skimage.draw import polygon, circle
-import torch, os, functools
-import torch.nn as nn
+import torch, os
 
 class SingleVolumeEnvironment(BaseEnvironment):
     def __init__(self, config, vol_id=0):
@@ -71,10 +69,11 @@ class SingleVolumeEnvironment(BaseEnvironment):
             state (np.ndarray of shape (3,3)): v-stacked 3D points that will define a particular plane in the CT volume.
             return_seg (bool): flag if we wish to return the corresponding segmentation map. (default=False)
             oob_black (bool): flack if we wish to mask out of volume pixels to black. (default=True)
-            preprocess (bool): if to preprocess the plane before returning it (unsqueeze to BxCxHxW, normalize and/or add positional binary maps) 
+            preprocess (bool): if to preprocess the plane before returning it (unsqueeze to BxCxHxW, normalize) 
             returns -> plane (torch.tensor of shape (1, 1, self.sy, self.sx)): corresponding plane sampled from the CT volume
                        seg (optional, np.ndarray of shape (self.sy, self.sx)): segmentation map of the sampled plane
         """
+        out = {}
         # 1. extract plane specs
         XYZ, P, S = self.get_plane_from_points(state, (self.sx, self.sy, self.sz))
         # 2. sample plane from the current volume
@@ -87,15 +86,16 @@ class SingleVolumeEnvironment(BaseEnvironment):
         # normalize and unsqueeze array if needed.
         if preprocess:
             plane = plane[np.newaxis, np.newaxis, ...]/255
+        # add to output
+        out["plane"] = plane
         # 3. sample the segmentation if needed
         if return_seg:
             seg = self.Segmentation[X,Y,Z]
             if oob_black == True:
                 seg[P < 0] = 0
                 seg[P > S] = 0
-            return plane, seg
-        else:
-            return plane
+            out["seg"] = seg
+        return out
     
     def get_reward(self, seg, state=None, increment=None):
         """Calculates the corresponding reward of stepping into a state given its segmentation map.
@@ -149,6 +149,8 @@ class SingleVolumeEnvironment(BaseEnvironment):
         Params:
         ==========
             action (int): discrete action (see baseEnvironment.mapActionToIncrement())
+            return_seg (bool): flag if we wish to return the corresponding segmentation map. (default=False)
+            preprocess (bool): if to preprocess the plane before returning it (unsqueeze to BxCxHxW, normalize)
         """
         # get the increment corresponding to this action
         increment = np.vstack([self.mapActionToIncrement(act) for act in action])
@@ -156,15 +158,12 @@ class SingleVolumeEnvironment(BaseEnvironment):
         state = self.state
         next_state = state + increment
         # observe the next plane and get the reward from segmentation map
-        next_slice, segmentation = self.sample_plane(state=next_state, return_seg=True, preprocess=preprocess)
-        rewards = self.get_reward(segmentation, next_state, increment)
+        sample = self.sample_plane(state=next_state, return_seg=True, preprocess=preprocess)
+        rewards = self.get_reward(sample["seg"], next_state, increment)
         # update the current state
         self.state = next_state
-        # return transition and the next_slice which has already been sampled
-        if return_seg:
-            return (state, action, rewards, next_state), next_slice, segmentation
-        else:
-            return (state, action, rewards, next_state), next_slice
+        # return transition and the sample
+        return (state, action, rewards, next_state), sample
     
     def reset(self):
         # sample a random plane (defined by 3 points) to start the episode from
@@ -286,6 +285,7 @@ class LocationAwareSingleVolumeEnvironment(SingleVolumeEnvironment):
             returns -> plane (torch.tensor of shape (1, 1, self.sy, self.sx)): corresponding plane sampled from the CT volume
                        seg (optional, np.ndarray of shape (self.sy, self.sx)): segmentation map of the sampled plane
         """
+        out = {}
         # 1. extract plane specs
         XYZ, P, S = self.get_plane_from_points(state, (self.sx, self.sy, self.sz))
         # 2. sample plane from the current volume
@@ -301,82 +301,16 @@ class LocationAwareSingleVolumeEnvironment(SingleVolumeEnvironment):
         # normalize and unsqueeze array if needed.  if necessary.
         if preprocess:
             plane = plane[np.newaxis, ...]/255
+        # add to output
+        out["plane"] = plane
         # 3. sample the segmentation if needed
         if return_seg:
-            return plane, self.Segmentation[X,Y,Z]
-        else:
-            return plane
-
-# ===== CT2US ENVIRONMENT =====
-class CT2USSingleVolumeEnvironment(SingleVolumeEnvironment):
-    def __init__(self, config, vol_id=0):
-        SingleVolumeEnvironment.__init__(self, config, vol_id)
-        # load the queried CT2US model
-        self.CT2USmodel = get_model(config.ct2us_model_name).to(config.device)
-    
-    # we need to rewrite the sample_plane and step functions, everything else should work fine
-    def sample_plane(self, state, return_seg=False, oob_black=True, preprocess=False, return_ct = False):
-        """ function to sample a plane from 3 3D points (state) and convert it to US
-        Params:
-        ==========
-            state (np.ndarray of shape (3,3)): v-stacked 3D points that will define a particular plane in the CT volume.
-            return_seg (bool): flag if we wish to return the corresponding segmentation map. (default=False)
-            oob_black (bool): flack if we wish to mask out of volume pixels to black. (default=True)
-            preprocess (bool): if to preprocess the plane before returning it (unsqueeze to BxCxHxW, normalize and/or add positional binary maps) 
-            returns -> plane (torch.tensor of shape (1, 1, self.sy, self.sx)): corresponding plane sampled from the CT volume transformed to US
-                       seg (optional, np.ndarray of shape (self.sy, self.sx)): segmentation map of the sampled plane
-        """
-        # sample the CT plane and the segmentation map calling the parent sample_plane method
-        planeCT, seg = super().sample_plane(state=state, return_seg=True, oob_black=oob_black, preprocess=False)
-
-        # preprocess the CT slice before sending to transformation network
-        planeCT = mask_array(planeCT)
-        planeCT = torch.tensor(planeCT/255).unsqueeze(0).unsqueeze(0).float().to(self.config.device)
-
-        # transform the image to US (do not store gradients)
-        with torch.no_grad():
-            planeUS = self.CT2USmodel(planeCT).detach().cpu().numpy()
-        
-        # image is already unsqueezed and normalized, if we did not want to preprocess the image then squeeze 
-        # and multiply by 255 to undo preprocessing
-        if not preprocess:
-            planeUS = planeUS.squeeze()*255
-        
-        if not return_seg and not return_ct:
-            return planeUS
-        elif return_seg and not return_ct:
-            return planeUS, seg
-        elif not return_seg and return_ct:
-            return planeUS, planeCT.detach().cpu().numpy()
-        else:
-            return planeUS, seg, planeCT.detach().cpu().numpy()
-    
-    def step(self, action, preprocess=False, return_seg=False, return_ct=False):
-        """Perform an input action (discrete action), observe the next state and reward.
-        Params:
-        ==========
-            action (int): discrete action (see baseEnvironment.mapActionToIncrement())
-        """
-        # get the increment corresponding to this action
-        increment = np.vstack([self.mapActionToIncrement(act) for act in action])
-        # step into the next state
-        state = self.state
-        next_state = state + increment
-        # observe the next plane and get the reward from segmentation map
-        next_slice, segmentation, next_sliceCT = self.sample_plane(state=next_state, return_seg=True, return_ct=True, preprocess=preprocess)
-        rewards = self.get_reward(segmentation, next_state, increment)
-        # update the current state
-        self.state = next_state
-        # return transition and the next_slice which has already been sampled        
-        if not return_seg and not return_ct:
-            return (state, action, rewards, next_state), next_slice
-        elif return_seg and not return_ct:
-            return (state, action, rewards, next_state), next_slice, segmentation
-        elif not return_seg and return_ct:
-            return (state, action, rewards, next_state), next_slice, next_sliceCT
-        else:
-            return (state, action, rewards, next_state), next_slice, segmentation, next_sliceCT
-
+            seg = self.Segmentation[X,Y,Z]
+            if oob_black == True:
+                seg[P < 0] = 0
+                seg[P > S] = 0
+            out["seg"] = seg
+        return out
 
 # ==== HELPER FUNCTIONS ====
 
@@ -402,162 +336,6 @@ def is_in_volume(volume, point):
     sx, sy, sz = volume.shape
     return  (point[0] >= 0 and point[0] < sx) and (point[1] >= 0 and point[1] < sy) and (point[2] >= 0 and point[2] < sz)
 
-# draw a mask on US image
-def mask_array(arr):
-    assert arr.ndim == 2
-    sx, sy = arr.shape # H, W
-    mask = np.ones_like(arr)*1
-    # Bottom circular shape
-    rr, cc = circle(0, int(sy//2), sy-1)
-    rr[rr >= sy] = sy-1
-    cc[cc >= sy] = sy-1
-    rr[rr < 0] = 0
-    cc[cc < 0] = 0
-    mask[rr, cc] = 0
-    # Left triangle
-    r = (0, 0, sx*5/9)
-    c = (0, sy//2, 0)
-    rr, cc = polygon(r, c)
-    mask[rr, cc] = 1
-    # Right triangle
-    r = (0,      0, sx*5/9)
-    c = (sy//2, sy-1, sy-1)
-    rr, cc = polygon(r, c)
-    mask[rr, cc] = 1
-    mask = (1-mask).astype(np.bool)
-    return mask*arr
-
 # Trick function to enable one-line conditions
 def doNothing():
     return None
-
-# ===== THE FOLLOWING FUNCTIONS HANDLE THE CYCLEGAN NETWORK INSTANCIATION AND WEIGHTS LOADING ====
-
-def get_model(name, use_cuda=False):
-    # instanciate cyclegan architecture used in CT2UStransfer (this is also the default architecture recommended by the authors)
-    model = ResnetGeneratorNoTrans(1, 1, 64, norm_layer=nn.InstanceNorm2d, use_dropout=True, n_blocks=9)
-    state_dict = torch.load(os.path.join(os.getcwd(), "environment", "CT2USmodels", "%s.pth"%name), map_location='cpu')
-    model.load_state_dict(state_dict)
-    return model
-
-# THE FOLLOWING CODE WAS ADAPTED FROM THE CYCLEGAN-PIX2PIX REPO: https://github.com/junyanz/pytorch-CycleGAN-and-pix2pix
-
-class ResnetGeneratorNoTrans(nn.Module):
-    """Resnet-based generator that consists of Resnet blocks between a few downsampling/upsampling operations.
-
-    We adapt Torch code and idea from Justin Johnson's neural style transfer project(https://github.com/jcjohnson/fast-neural-style)
-    """
-
-    def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=6, padding_type='reflect'):
-        """Construct a Resnet-based generator
-
-        Parameters:
-            input_nc (int)      -- the number of channels in input images
-            output_nc (int)     -- the number of channels in output images
-            ngf (int)           -- the number of filters in the last conv layer
-            norm_layer          -- normalization layer
-            use_dropout (bool)  -- if use dropout layers
-            n_blocks (int)      -- the number of ResNet blocks
-            padding_type (str)  -- the name of padding layer in conv layers: reflect | replicate | zero
-        """
-        assert(n_blocks >= 0)
-        super(ResnetGeneratorNoTrans, self).__init__()
-        if type(norm_layer) == functools.partial:
-            use_bias = norm_layer.func == nn.InstanceNorm2d
-        else:
-            use_bias = norm_layer == nn.InstanceNorm2d
-
-        model = [nn.ReflectionPad2d(3),
-                 nn.Conv2d(input_nc, ngf, kernel_size=7, padding=0, bias=use_bias),
-                 norm_layer(ngf),
-                 nn.ReLU(True)]
-
-        n_downsampling = 2
-        for i in range(n_downsampling):  # add downsampling layers
-            mult = 2 ** i
-            model += [nn.Conv2d(ngf * mult, ngf * mult * 2, kernel_size=3, stride=2, padding=1, bias=use_bias),
-                      norm_layer(ngf * mult * 2),
-                      nn.ReLU(True)]
-
-        mult = 2 ** n_downsampling
-        for i in range(n_blocks):       # add ResNet blocks
-
-            model += [ResnetBlock(ngf * mult, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias)]
-
-        for i in range(n_downsampling):  # add upsampling layers
-            mult = 2 ** (n_downsampling - i)
-            # model += [nn.ConvTranspose2d(ngf * mult, int(ngf * mult / 2),
-            #                              kernel_size=3, stride=2,
-            #                              padding=1, output_padding=1,
-            #                              bias=use_bias),
-            #           norm_layer(int(ngf * mult / 2)),
-            #           nn.ReLU(True)]
-            model += [  nn.Upsample(scale_factor=2, mode='nearest'),
-                        nn.Conv2d(ngf * mult, int(ngf * mult / 2), kernel_size=3, stride=1, padding=1, bias=use_bias),
-                        norm_layer(int(ngf * mult / 2)),
-                        nn.ReLU(True)]
-        model += [nn.ReflectionPad2d(3)]
-        model += [nn.Conv2d(ngf, output_nc, kernel_size=7, padding=0)]
-        model += [nn.Tanh()]
-
-        self.model = nn.Sequential(*model)
-
-    def forward(self, input):
-        """Standard forward"""
-        return self.model(input)
-
-class ResnetBlock(nn.Module):
-    """Define a Resnet block"""
-
-    def __init__(self, dim, padding_type, norm_layer, use_dropout, use_bias):
-        """Initialize the Resnet block
-        A resnet block is a conv block with skip connections
-        We construct a conv block with build_conv_block function,
-        and implement skip connections in <forward> function.
-        Original Resnet paper: https://arxiv.org/pdf/1512.03385.pdf
-        """
-        super(ResnetBlock, self).__init__()
-        self.conv_block = self.build_conv_block(dim, padding_type, norm_layer, use_dropout, use_bias)
-
-    def build_conv_block(self, dim, padding_type, norm_layer, use_dropout, use_bias):
-        """Construct a convolutional block.
-        Parameters:
-            dim (int)           -- the number of channels in the conv layer.
-            padding_type (str)  -- the name of padding layer: reflect | replicate | zero
-            norm_layer          -- normalization layer
-            use_dropout (bool)  -- if use dropout layers.
-            use_bias (bool)     -- if the conv layer uses bias or not
-        Returns a conv block (with a conv layer, a normalization layer, and a non-linearity layer (ReLU))
-        """
-        conv_block = []
-        p = 0
-        if padding_type == 'reflect':
-            conv_block += [nn.ReflectionPad2d(1)]
-        elif padding_type == 'replicate':
-            conv_block += [nn.ReplicationPad2d(1)]
-        elif padding_type == 'zero':
-            p = 1
-        else:
-            raise NotImplementedError('padding [%s] is not implemented' % padding_type)
-
-        conv_block += [nn.Conv2d(dim, dim, kernel_size=3, padding=p, bias=use_bias), norm_layer(dim), nn.ReLU(True)]
-        if use_dropout:
-            conv_block += [nn.Dropout(0.5)]
-
-        p = 0
-        if padding_type == 'reflect':
-            conv_block += [nn.ReflectionPad2d(1)]
-        elif padding_type == 'replicate':
-            conv_block += [nn.ReplicationPad2d(1)]
-        elif padding_type == 'zero':
-            p = 1
-        else:
-            raise NotImplementedError('padding [%s] is not implemented' % padding_type)
-        conv_block += [nn.Conv2d(dim, dim, kernel_size=3, padding=p, bias=use_bias), norm_layer(dim)]
-
-        return nn.Sequential(*conv_block)
-
-    def forward(self, x):
-        """Forward function (with skip connections)"""
-        out = x + self.conv_block(x)  # add skip connections
-        return out

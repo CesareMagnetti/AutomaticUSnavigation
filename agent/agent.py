@@ -31,20 +31,20 @@ class SingleVolumeAgent(BaseAgent):
         self.episode+=1
         episode_loss = 0
         env.reset()
-        slice = env.sample_plane(env.state, preprocess=True)
+        sample = env.sample_plane(env.state, preprocess=True)
         for _ in range(self.config.n_steps_per_episode):  
             self.t_step+=1
             # get action from current state
-            actions = self.act(slice, local_model, self.eps) 
+            actions = self.act(sample["plane"], local_model, self.eps) 
             # step the environment to return a transitiony  
-            transition, next_slice = env.step(actions, preprocess=True)
+            transition, next_sample = env.step(actions, preprocess=True)
             # add (state, action, reward, next_state) to buffer
             buffer.add(*transition)
             # learn every UPDATE_EVERY steps and if enough samples in env.buffer
             if self.t_step % self.config.update_every == 0 and len(buffer) > self.config.batch_size:
                 episode_loss+=self.learn(env, buffer, local_model, target_model, optimizer, criterion)
-            # set slice to next slice
-            slice= next_slice
+            # set sample to next sample
+            sample= next_sample
         # return episode logs
         logs = env.logs
         logs.update({"loss": episode_loss, "epsilon": self.eps, "beta": self.beta})
@@ -61,58 +61,32 @@ class SingleVolumeAgent(BaseAgent):
             env (environment/* instance): the environment the agent will interact with while testing.
             local_model (PyTorch model): pytorch network that will be tested.
         """
-        out = {"frames": [], "states": [], "logs": []}
+        out = {"planes": [], "segs": [], "states": [], "logs": []}
+        if self.config.CT2US:
+            out.update({"planesCT": []})
         # reset env to a random initial slice
         env.reset()
-        frame = env.sample_plane(env.state, preprocess=True)
+        sample = env.sample_plane(env.state, preprocess=True, return_seg=True)
         # play an episode greedily
         with torch.no_grad():
             for _ in tqdm(range(1, steps+1), desc="testing..."):
-                # add to output dict  
-                out["frames"].append(frame.squeeze())
+                # add logs to output dict  
+                out["planes"].append(sample["plane"].squeeze())
+                out["segs"].append(sample["seg"].squeeze())
+                if self.config.CT2US:
+                    out["planesCT"].append(sample["planeCT"].squeeze())
                 out["states"].append(env.state)
                 out["logs"].append({log: r for log,r in env.current_logs.items()})
                 # get action from current state
-                actions = self.act(frame, local_model)
+                actions = self.act(sample["plane"], local_model)
                 # observe transition and next_slice
-                transition, next_frame = env.step(actions, preprocess=True)
+                transition, next_sample = env.step(actions, preprocess=True, return_seg=True)
                 # set slice to next slice
-                frame = next_frame
+                sample = next_sample
         # add logs for wandb to out
         out["wandb"] = {log+"_test": r for log,r in env.logs.items()}
         return out
     
-    def test_agentUS(self, steps, env, local_model):
-        """Test the greedy policy learned by the agent and returns a dict with useful metrics/logs on US navigation
-        Params:
-        ==========
-            steps (int): number of steps to test the agent for.
-            env (environment/* instance): the environment the agent will interact with while testing.
-            local_model (PyTorch model): pytorch network that will be tested.
-        """
-        out = {"frames": [], "framesCT": [], "states": [], "logs": []}
-        # reset env to a random initial slice
-        env.reset()
-        frame, frameCT = env.sample_plane(env.state, preprocess=True, return_ct=True)
-        # play an episode greedily
-        with torch.no_grad():
-            for _ in tqdm(range(1, steps+1), desc="testing..."):
-                # add to output dict  
-                out["frames"].append(frame.squeeze())
-                out["framesCT"].append(frameCT.squeeze())
-                out["states"].append(env.state)
-                out["logs"].append({log: r for log,r in env.current_logs.items()})
-                # get action from current state
-                actions = self.act(frame, local_model)  
-                # observe transition and next_slice
-                transition, next_frame, next_frameCT = env.step(actions, preprocess=True, return_ct=True)
-                # set slice to next slice
-                frame = next_frame
-                frameCT = next_frameCT
-        # add logs for wandb to out
-        out["wandb"] = {log+"_test": r for log,r in env.logs.items()}
-        return out
-        
     def learn(self, env, buffer, local_model, target_model, optimizer, criterion):
         """ Update value parameters using given batch of experience tuples.
         Params:
@@ -129,10 +103,10 @@ class SingleVolumeAgent(BaseAgent):
         batch, weights, indices = buffer.sample(beta=self.beta)
         weights = torch.from_numpy(weights).float().squeeze().to(self.config.device)
         states, actions, rewards, next_states = batch
-        planes = env.sample_planes(states+next_states, preprocess=True)
+        sample = env.sample_planes(states+next_states, preprocess=True)
         # concatenate and move to gpu
-        states = torch.from_numpy(np.vstack(planes[:self.config.batch_size])).float().to(self.config.device)
-        next_states = torch.from_numpy(np.vstack(planes[self.config.batch_size:])).float().to(self.config.device)
+        states = torch.from_numpy(np.vstack(sample["planes"][:self.config.batch_size])).float().to(self.config.device)
+        next_states = torch.from_numpy(np.vstack(sample["planes"][self.config.batch_size:])).float().to(self.config.device)
         rewards = torch.from_numpy(np.hstack(rewards)).unsqueeze(-1).float().to(self.config.device)
         actions = torch.from_numpy(np.hstack(actions)).unsqueeze(-1).long().to(self.config.device)
         batch = (states, actions, rewards, next_states)

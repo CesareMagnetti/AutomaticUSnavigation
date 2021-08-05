@@ -72,16 +72,16 @@ class BaseAgent(object):
         local_model.train()
         return np.vstack([torch.argmax(Q, dim=1).item() for Q in Qs])
 
-    def act(self, slice, local_model, eps=0.):
+    def act(self, plane, local_model, eps=0.):
         """Generate an action given some input.
         Params:
         ==========
-            slice (np.ndarray of shape (H, W)): 2D slice of anatomy.
+            plane (np.ndarray of shape (H, W)): 2D slice of anatomy.
             local_model (PyTorch model): takes input the slice and outputs action values
             eps (float): epsilon parameter governing exploration/exploitation trade-off
         """
         if random.random()>eps:
-            return self.greedy_action(slice, local_model)
+            return self.greedy_action(plane, local_model)
         else:
             return self.random_action()
     

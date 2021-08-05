@@ -6,6 +6,7 @@ import torch.optim as optim
 import torch.nn as nn
 
 from environment.xcatEnvironment import *
+from environment.CT2USenvironment import *
 from agent.agent import MultiVolumeAgent
 from buffer.buffer import *
 from visualisation.visualizers import Visualizer
@@ -72,7 +73,7 @@ def train(config, local_model, target_model, wandb_entity="us_navigation", sweep
                         for key, log in out.items():
                             wandb.log(log["wandb"], commit=True)
                             # animate the trajectory followed by the agent in the current episode
-                            visualizer.render_frames(log["frames"], "episode%d.gif"%episode)
+                            visualizer.render_frames(log["planes"], "episode%d.gif"%episode)
                         # upload file to wandb
                         wandb.save(os.path.join(visualizer.savedir, "episode%d.gif"%episode))
         # at the end of the training session save the model as .onnx to improve the open sourceness and exchange-ability amongst different ML frameworks
