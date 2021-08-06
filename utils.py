@@ -57,7 +57,7 @@ def train(config, local_model, target_model, wandb_entity="us_navigation", sweep
         # 3. tell wandb to watch what the model gets up to: gradients, weights, and loss
         wandb.watch(local_model, criterion, log="all", log_freq=config.log_freq)
         # 4. start training
-        for episode in tqdm(range(config.starting_episode, config.n_episodes+1), desc="training..."):
+        for episode in tqdm(range(config.starting_episode+1, config.n_episodes+1), desc="training..."):
                 logs = agent.play_episode(envs, local_model, target_model, optimizer, criterion, buffers)
                 logs["loss"] = agent.train(envs, local_model, target_model, optimizer, criterion, buffers,
                                            n_iter = int(config.n_steps_per_episode/config.update_every))
