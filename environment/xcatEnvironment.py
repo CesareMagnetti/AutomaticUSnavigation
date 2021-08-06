@@ -39,9 +39,20 @@ class SingleVolumeEnvironment(BaseEnvironment):
         Segmentation = sitk.GetArrayFromImage(itkSegmentation)
         self.Segmentation = Segmentation
 
+        # get an approximated location for the 4-chamber slice using the centroids
+        LVcentroid = get_centroid(segmentation, 2885)
+        RVcentroid = get_centroid(segmentation, 2897)
+        LAcentroid = get_centroid(segmentation, 2893)
+        self.goal_state = np.vstack([LVcentroid, RVcentroid, LAcentroid])
+        # get the corresponding plane coefficients
+        self.goal_plane = self.get_plane_coefs(LVcentroid,RVcentroid,LAcentroid)
+
         # setup the reward function handling:
         self.logged_rewards = ["anatomyReward"]
         self.rewards = {"anatomyReward": AnatomyReward(config.anatomyRewardIDs)}
+        if config.planeDistanceReward:
+            self.logged_rewards.append("planeDistanceReward")
+            self.rewards["planeDistanceReward"] = PlaneDistanceReward(self.goal_plane)
         if abs(config.steppingReward) > 0:
             self.logged_rewards.append("steppingReward")
             self.rewards["steppingReward"] = SteppingReward(config.steppingReward)
@@ -110,7 +121,10 @@ class SingleVolumeEnvironment(BaseEnvironment):
         shared_rewards = {}
         single_rewards = {}
         for key, func in self.rewards.items():
-            if key == "anatomyReward":
+            if key == "planeDistanceReward":
+                # this will contain a single reward for all agents
+                shared_rewards["planeDistanceReward"] = func(self.get_plane_coefs(state))
+            elif key == "anatomyReward":
                 # this will contain a single reward for all agents
                 shared_rewards["anatomyReward"] = func(seg)               
             elif key == "steppingReward":
@@ -166,21 +180,14 @@ class SingleVolumeEnvironment(BaseEnvironment):
         return (state, action, rewards, next_state), sample
     
     def reset(self):
-        # sample a random plane (defined by 3 points) to start the episode from
         if self.config.easy_objective:
-            # these planes correspond more or less to a 4-chamber view
-            pointA = np.array([np.random.uniform(low=0.85, high=1)*self.sx-1,
-                              0,
-                              np.random.uniform(low=0.7, high=0.92)*self.sz-1])
-
-            pointB = np.array([np.random.uniform(low=0.3, high=0.43)*self.sx-1,
-                              self.sy-1,
-                              0])
-
-            pointC = np.array([np.random.uniform(low=0.3, high=0.43)*self.sx-1,
-                              self.sy-1,
-                              self.sz-1]) 
+            # shuffle rows of the goal state
+            np.random.shuffle(self.goal_state)
+            # add a random increment of +/- 10 pixels to this goal state
+            noise = np.random.randint(low=-10, high=10, size=(3,3))
+            self.state = self.goal_state + noise
         else:
+            # sample a random plane (defined by 3 points) to start the episode from
             pointA = np.array([np.random.uniform(low=0., high=1)*self.sx-1,
                               np.random.uniform(low=0., high=1)*self.sy-1,
                               np.random.uniform(low=0., high=1.)*self.sz-1])
@@ -192,8 +199,8 @@ class SingleVolumeEnvironment(BaseEnvironment):
             pointC = np.array([np.random.uniform(low=0., high=1.)*self.sx-1,
                               np.random.uniform(low=0., high=1)*self.sy-1,
                               np.random.uniform(low=0., high=1.)*self.sz-1])             
-        # stack points to define the state
-        self.state = np.vstack([pointA, pointB, pointC]).astype(np.int)
+            # stack points to define the state
+            self.state = np.vstack([pointA, pointB, pointC]).astype(np.int)
         # reset the logged rewards for this episode
         self.logs = {r: 0 for r in self.logged_rewards}
         self.current_logs = {r: 0 for r in self.logged_rewards}
@@ -313,6 +320,12 @@ class LocationAwareSingleVolumeEnvironment(SingleVolumeEnvironment):
         return out
 
 # ==== HELPER FUNCTIONS ====
+def get_centroid(data, seg_id, norm=False):
+    volume = data == seg_id # Get binary map for the specified seg id
+    values = np.array(ndimage.measurements.center_of_mass(volume), dtype=np.int)
+    if norm:
+        values = values / data.shape
+    return values
 
 def intensity_scaling(ndarr, pmin=None, pmax=None, nmin=None, nmax=None):
     pmin = pmin if pmin != None else ndarr.min()

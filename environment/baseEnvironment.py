@@ -168,7 +168,7 @@ class BaseEnvironment(object):
         a, b, c = cp
         # This evaluates a * x3 + b * y3 + c * z3 which equals d
         d = np.dot(cp, p3)
-        return a, b, c, d
+        return np.array([a, b, c, d])
         
     @staticmethod
     def mapActionToIncrement(action):

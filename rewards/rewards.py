@@ -1,5 +1,26 @@
 import numpy as np
 
+class PlaneDistanceReward(object):
+    """Class to assign a reward based on the plane distance between the plane defined by the current state and the goal plane
+    defined using the centroids of the heart chambers.
+    """
+    def __init__(self, goal):
+        self.goal = goal
+        self.previous_plane = None
+    
+    def __call__(coefs):
+        # if previous plane is none (first step) set it equal to the current step -> reward of zero at the beginning
+        if self.previous_plane is None:
+            self.previous_plane = coefs
+        # calculate euclidean distance between current plane and the goal
+        D1 = ((coefs-self.goal)**2).sum()
+        # calculate distance between previous plane and goal
+        D2 = ((self.previous_plane-self.goal)**2).sum()
+        # store plane as the new previous plane
+        self.previous_plane = np.array(coefs)
+        # return sign function of distance improvement
+        return np.sign(D2-D1)
+
 class AnatomyReward(object):
     """Class to assign the anatomical reward signal. we reward based on a particular anatomical structure being present
     in the slice sampled by the current state to this end we have segmentations of the volume and reward_id corresponds
