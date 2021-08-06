@@ -38,7 +38,7 @@ class CT2USSingleVolumeEnvironment(SingleVolumeEnvironment):
             sample["planeCT"] = sample["planeCT"].squeeze()*255
         return sample
 
-class CT2USSingleVolumeEnvironmentLocationAware(SingleVolumeEnvironmentLocationAware):
+class LocationAwareCT2USSingleVolumeEnvironment(LocationAwareSingleVolumeEnvironment):
     def __init__(self, config, vol_id=0):
         SingleVolumeEnvironment.__init__(self, config, vol_id)
         # load the queried CT2US model

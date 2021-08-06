@@ -2,6 +2,7 @@ from agent.baseAgent import BaseAgent
 import numpy as np
 import torch, os, wandb
 from tqdm import tqdm
+import concurrent.futures
 
 class SingleVolumeAgent(BaseAgent):
     """Interacts with and learns from a single environment volume."""
@@ -32,22 +33,25 @@ class SingleVolumeAgent(BaseAgent):
         episode_loss = 0
         env.reset()
         sample = env.sample_plane(env.state, preprocess=True)
-        for _ in range(self.config.n_steps_per_episode):  
-            self.t_step+=1
-            # get action from current state
-            actions = self.act(sample["plane"], local_model, self.eps) 
-            # step the environment to return a transitiony  
-            transition, next_sample = env.step(actions, preprocess=True)
-            # add (state, action, reward, next_state) to buffer
-            buffer.add(*transition)
-            # learn every UPDATE_EVERY steps and if enough samples in env.buffer
-            if self.t_step % self.config.update_every == 0 and len(buffer) > self.config.batch_size:
-                episode_loss+=self.learn(env, buffer, local_model, target_model, optimizer, criterion)
-            # set sample to next sample
-            sample= next_sample
+        # play episode (stores transition tuples to the buffer)
+        with torch.no_grad():
+            for _ in range(self.config.n_steps_per_episode):  
+                self.t_step+=1
+                # get action from current state
+                actions = self.act(sample["plane"], local_model, self.eps) 
+                # step the environment to return a transitiony  
+                transition, next_sample = env.step(actions, preprocess=True)
+                # add (state, action, reward, next_state) to buffer
+                buffer.add(*transition)
+                # learn every UPDATE_EVERY steps and if enough samples in env.buffer
+                # if self.t_step % self.config.update_every == 0 and len(buffer) > self.config.batch_size:
+                #     episode_loss+=self.learn(env, buffer, local_model, target_model, optimizer, criterion)
+                # set sample to next sample
+                sample= next_sample
         # return episode logs
         logs = env.logs
-        logs.update({"loss": episode_loss, "epsilon": self.eps, "beta": self.beta})
+        #logs.update({"loss": episode_loss, "epsilon": self.eps, "beta": self.beta})
+        logs.update({"epsilon": self.eps, "beta": self.beta})
         # decrease eps
         self.eps = max(self.eps*self.EPS_DECAY_FACTOR, self.config.eps_end)
         self.beta = min(self.beta*self.BETA_DECAY_FACTOR, self.config.beta_end)
@@ -85,8 +89,39 @@ class SingleVolumeAgent(BaseAgent):
                 sample = next_sample
         # add logs for wandb to out
         out["wandb"] = {log+"_test": r for log,r in env.logs.items()}
+        # re-arrange the logs key so that it goes from list of dicts to dict of lists
+        out["logs"] = {k: [dic[k] for dic in out["logs"]] for k in out["logs"][0]}
         return out
     
+    def train(self, env, buffer, local_model, target_model, optimizer, criterion, n_iter=1):
+        # train the q_network for a number of iterations
+        loss = 0
+        for i in range(n_iter):
+            loss+=self.learn(env, buffer, local_model, target_model, optimizer, criterion)
+        return loss/n_iter
+
+    def prepare_batch(self, env, buffer):
+        """arranges a training batch for the learn function
+        Params:
+        ==========
+            env (environment/* instance): the environment the agent will interact with while training.
+            buffer (buffer/* object): replay buffer shared amongst processes (each process pushes to the same memory.)
+        Returns: batch (tuple): preprocessed transitions
+        """
+        # 1. sample transitions, weights and indices (for prioritization)
+        batch, weights, indices = buffer.sample(beta=self.beta)
+        weights = torch.from_numpy(weights).float().squeeze()
+        states, actions, rewards, next_states = batch
+        # 2. sample planes and next_planes using multiple threads
+        sample = env.sample_planes(states+next_states, preprocess=True)
+        # 3. preprocess each item
+        states = torch.from_numpy(np.vstack(sample["plane"][:self.config.batch_size])).float()
+        next_states = torch.from_numpy(np.vstack(sample["plane"][self.config.batch_size:])).float()
+        rewards = torch.from_numpy(np.hstack(rewards)).unsqueeze(-1).float()
+        actions = torch.from_numpy(np.hstack(actions)).unsqueeze(-1).long()
+        batch = (states, actions, rewards, next_states)
+        return batch
+
     def learn(self, env, buffer, local_model, target_model, optimizer, criterion):
         """ Update value parameters using given batch of experience tuples.
         Params:
@@ -100,16 +135,8 @@ class SingleVolumeAgent(BaseAgent):
             criterion (PyTorch Module): loss to minimize in order to train the local network.
         """  
         # 1. organize batch
-        batch, weights, indices = buffer.sample(beta=self.beta)
-        weights = torch.from_numpy(weights).float().squeeze().to(self.config.device)
-        states, actions, rewards, next_states = batch
-        sample = env.sample_planes(states+next_states, preprocess=True)
-        # concatenate and move to gpu
-        states = torch.from_numpy(np.vstack(sample["planes"][:self.config.batch_size])).float().to(self.config.device)
-        next_states = torch.from_numpy(np.vstack(sample["planes"][self.config.batch_size:])).float().to(self.config.device)
-        rewards = torch.from_numpy(np.hstack(rewards)).unsqueeze(-1).float().to(self.config.device)
-        actions = torch.from_numpy(np.hstack(actions)).unsqueeze(-1).long().to(self.config.device)
-        batch = (states, actions, rewards, next_states)
+        batch = self.prepare_batch(env, buffer)
+        batch = [b.to(env.config.device) for b in batch]
         # 2. make a training step (retain graph because we will backprop multiple times through the backbone cnn)
         optimizer.zero_grad()
         loss = self.trainer.step(batch, local_model, target_model, criterion, buffer, weights, indices)
@@ -161,14 +188,34 @@ class MultiVolumeAgent(SingleVolumeAgent):
             env_id (int, optional): which environment to use, if None chose at random.
         Returns logs (dict): all relevant logs acquired throughout the episode.
         """  
-        # set the current environment and buffers used
-        self.switch_env(env_id)
-        env, buffer = envs[self.env_id], buffers[self.env_id]
-        # call the parent play_episode class to play an episode with these environment and buffer
-        logs = super().play_episode(env, local_model, target_model, optimizer, criterion, buffer)
-        logs["env_id"] = self.env_id
+        # play episode in each environment using multi-threading
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            futures = {self.config.volume_ids.split(',')[idx]: executor.submit(super().play_episode,
+                                                                               env,
+                                                                               local_model,
+                                                                               target_model,
+                                                                               optimizer,
+                                                                               criterion,
+                                                                               buffer) for idx, (env, buffer) in enumerate(zip(envs, buffers))}
+        logs = {key: f.result() for key, f in futures.items()}
+
+        # # set the current environment and buffers used
+        # self.switch_env(env_id)
+        # env, buffer = envs[self.env_id], buffers[self.env_id]
+        # # call the parent play_episode class to play an episode with these environment and buffer
+        # logs = super().play_episode(env, local_model, target_model, optimizer, criterion, buffer)
+        # logs["env_id"] = self.env_id
+
         return logs
     
+    # rewrite the train function
+    def train(self, envs, local_model, target_model, optimizer, criterion, buffers, n_iter=1):
+
+        loss = {}
+        for idx, (env, buffer) in enumerate(zip(envs, buffers)):
+            loss[self.config.volume_ids.split(',')[idx]] = super().train(env, buffer, local_model, target_model, optimizer, criterion, n_iter)
+        return loss
+
     # rewrite the test agent function
     def test_agent(self, steps, envs, local_model):
         """Test the greedy policy learned by the agent on some test environments and returns a dict with useful metrics/logs.

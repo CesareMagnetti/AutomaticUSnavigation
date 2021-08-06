@@ -61,6 +61,7 @@ def gather_options(phase="train"):
     parser.add_argument('--CT2US', action='store_true', help="will launch full pipeline navigating in US domain. Else navigation will take place in the CT/XCAT volume.")
 
     # training options (general)
+    parser.add_argument('--starting_episode', type=int, default=0, help="what episode we start training from.")
     parser.add_argument('--n_episodes', type=int, default=2000, help="number of episodes to train the agents for.")
     parser.add_argument('--n_steps_per_episode', type=int, default=250, help="number of steps in each episode.")
     parser.add_argument('--batch_size', type=int, default=256, help="batch size for the replay buffer.")

@@ -24,12 +24,11 @@ class Visualizer():
             os.makedirs(self.savedir)
         
     def render_frames(self, frames, fname, fps=10):
+        # if location aware we have 4 channels (1 anatomical slice + 3 location maps, concatenate as 2x2)
         if len(frames[0].shape) > 2:
-            # if location aware we have 4 channels (1 anatomical slice + 3 location maps, concatenate as 2x2)
             frames = [np.vstack([np.hstack(elem[:2, ...]), np.hstack(elem[2:, ...])]) for elem in frames]
-        else:
-            # if not location aware we have 2D planes
-            frames = [elem[..., np.newaxis]*np.ones(3)*255 for elem in frames]
+        # make 3 channels for ImageSequenceClip
+        frames = [elem[..., np.newaxis]*np.ones(3)*255 for elem in frames]
         # generate the gif
         clip = ImageSequenceClip(frames, fps=fps)
         clip.write_gif(os.path.join(self.savedir, fname), fps=fps)
@@ -51,15 +50,6 @@ class Visualizer():
                 return plot_objects
 
             # gather useful information
-            # 1. rearrange logs
-            logs = {key: [] for key in out["logs"][0]}
-            logs["total"] = []
-            for log in out["logs"]:
-                total = 0
-                for key, item in log.items():
-                    total+=item
-                    logs[key].append(item)
-                logs["total"].append(total)
             for key in logs:
                 logs[key] = np.array(logs[key])
             # 2. stack the states in a single numpy array
