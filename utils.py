@@ -57,21 +57,21 @@ def train(config, local_model, target_model, wandb_entity="us_navigation", sweep
         # 3. tell wandb to watch what the model gets up to: gradients, weights, and loss
         wandb.watch(local_model, criterion, log="all", log_freq=config.log_freq)
         # 4. start training
-        for episode in tqdm(range(config.starting_episode, config.n_episodes+1), desc="training..."):
+        for episode in tqdm(range(config.starting_episode+1, config.n_episodes+1), desc="playing episode..."):
                 logs = agent.play_episode(envs, local_model, target_model, optimizer, criterion, buffers)
                 logs["loss"] = agent.train(envs, local_model, target_model, optimizer, criterion, buffers,
                                            n_iter = int(config.n_steps_per_episode/config.update_every))
                 # send logs to weights and biases
-                if episode % config.log_freq == 0:
+                if episode % max(1, int(config.log_freq/len(envs))) == 0:
                         wandb.log(logs, commit=True)
                 # save agent locally and test its current greedy policy
-                if episode % config.save_freq == 0:
+                if episode % max(1, int(config.save_freq/len(envs))) == 0:
                         if not sweep:
                                 print("saving latest model weights...")
                                 local_model.save(os.path.join(agent.checkpoints_dir, "latest.pth"))
                                 target_model.save(os.path.join(agent.checkpoints_dir, "episode%d.pth"%episode))
                         # test the greedy policy on a random environment and send logs to wandb
-                        out = agent.test_agent(config.n_steps_per_episode, envs[np.random.randint(agent.n_envs)], local_model)
+                        out = agent.test_agent(config.n_steps_per_episode, [envs[np.random.randint(agent.n_envs)]], local_model)
                         for key, log in out.items():
                             wandb.log(log["wandb"], commit=True)
                             # animate the trajectory followed by the agent in the current episode
