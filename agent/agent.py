@@ -52,9 +52,9 @@ class SingleVolumeAgent(BaseAgent):
         logs = env.logs
         #logs.update({"loss": episode_loss, "epsilon": self.eps, "beta": self.beta})
         logs.update({"epsilon": self.eps, "beta": self.beta})
-        # decrease eps
-        self.eps = max(self.eps*self.EPS_DECAY_FACTOR, self.config.eps_end)
-        self.beta = min(self.beta*self.BETA_DECAY_FACTOR, self.config.beta_end)
+        # # decrease eps
+        # self.eps = max(self.eps*self.EPS_DECAY_FACTOR, self.config.eps_end)
+        # self.beta = min(self.beta*self.BETA_DECAY_FACTOR, self.config.beta_end)
         return logs
 
     def test_agent(self, steps, env, local_model):
@@ -108,6 +108,9 @@ class SingleVolumeAgent(BaseAgent):
             total_loss+=loss.item()
         # set back to eval mode as we will only be training inside this function
         local_model.eval()
+        # decrease eps and increase beta after each training step
+        self.eps = max(self.eps*self.EPS_DECAY_FACTOR, self.config.eps_end)
+        self.beta = min(self.beta*self.BETA_DECAY_FACTOR, self.config.beta_end)
         return loss/n_iter
 
     def prepare_batch(self, env, buffer):
@@ -229,7 +232,6 @@ class MultiVolumeAgent(SingleVolumeAgent):
             # 2. take a training step
             loss, deltas = self.learn(batch, local_model, target_model, optimizer, criterion)
             # 3. update priorities for each buffer separately (do this in parallel)
-            #indices = batch["indices"].reshape(self.n_envs, -1)
             deltas = deltas.cpu().detach().numpy().squeeze().reshape(self.n_envs, -1)
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 futures = [executor.submit(buffer.update_priorities, ind, delt) for buffer, ind, delt in zip(buffers, batch["indices"], deltas)]
