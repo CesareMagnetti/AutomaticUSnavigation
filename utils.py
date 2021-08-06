@@ -62,10 +62,10 @@ def train(config, local_model, target_model, wandb_entity="us_navigation", sweep
                 logs["loss"] = agent.train(envs, local_model, target_model, optimizer, criterion, buffers,
                                            n_iter = int(config.n_steps_per_episode/config.update_every))
                 # send logs to weights and biases
-                if episode % config.log_freq == 0:
+                if episode % max(1, config.log_freq/int(len(envs))) == 0:
                         wandb.log(logs, commit=True)
                 # save agent locally and test its current greedy policy
-                if episode % config.save_freq == 0:
+                if episode % max(1, config.save_freq/int(len(envs))) == 0:
                         if not sweep:
                                 print("saving latest model weights...")
                                 local_model.save(os.path.join(agent.checkpoints_dir, "latest.pth"))

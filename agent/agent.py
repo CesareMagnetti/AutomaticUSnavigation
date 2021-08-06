@@ -35,7 +35,7 @@ class SingleVolumeAgent(BaseAgent):
         sample = env.sample_plane(env.state, preprocess=True)
         # play episode (stores transition tuples to the buffer)
         with torch.no_grad():
-            for _ in tqdm(range(self.config.n_steps_per_episode), desc="playing episode..."):  
+            for _ in range(self.config.n_steps_per_episode):  
                 self.t_step+=1
                 # get action from current state
                 actions = self.act(sample["plane"], local_model, self.eps) 
