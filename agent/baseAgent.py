@@ -66,10 +66,8 @@ class BaseAgent(object):
         """
         # convert to tensor, normalize and unsqueeze to pass through qnetwork
         slice = torch.from_numpy(slice).float().to(self.config.device)
-        local_model.eval()
         with torch.no_grad():
             Qs = local_model(slice)
-        local_model.train()
         return np.vstack([torch.argmax(Q, dim=1).item() for Q in Qs])
 
     def act(self, plane, local_model, eps=0.):

@@ -17,9 +17,12 @@ def setup_networks(config):
                    2, 4, not config.no_dropout_Q, not config.no_batchnorm_Q]
     else:
         raise ValueError('unknown param ``--default_Q``: {}. available options: [small, large]'.format(config.default_Q))
-
+    # send to gpu
     qnetwork_local = SimpleQNetwork(*params).to(config.device)
     qnetwork_target = SimpleQNetwork(*params).to(config.device)
+    # we keep networks in evaluation mode at all times, when training is needed, .train() will be called on the local network
+    qnetwork_local.eval()
+    qnetwork_target.eval()
     print("Qnetwork instanciated: {} params.\n".format(qnetwork_local.count_parameters()), qnetwork_local)
     # 2. load from checkpoint if needed
     if config.load is not None:

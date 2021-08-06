@@ -58,7 +58,7 @@ def train(config, local_model, target_model, wandb_entity="us_navigation", sweep
         wandb.watch(local_model, criterion, log="all", log_freq=config.log_freq)
         # 4. start training
         for episode in tqdm(range(config.starting_episode, config.n_episodes+1), desc="training..."):
-                logs = agent.play_episode(envs, local_model, target_model, optimizer, criterion, buffers) # selects env at random
+                logs = agent.play_episode(envs, local_model, target_model, optimizer, criterion, buffers)
                 logs["loss"] = agent.train(envs, local_model, target_model, optimizer, criterion, buffers,
                                            n_iter = int(config.n_steps_per_episode/config.update_every))
                 # send logs to weights and biases

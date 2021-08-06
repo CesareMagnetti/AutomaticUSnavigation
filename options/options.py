@@ -64,7 +64,7 @@ def gather_options(phase="train"):
     parser.add_argument('--starting_episode', type=int, default=0, help="what episode we start training from.")
     parser.add_argument('--n_episodes', type=int, default=2000, help="number of episodes to train the agents for.")
     parser.add_argument('--n_steps_per_episode', type=int, default=250, help="number of steps in each episode.")
-    parser.add_argument('--batch_size', type=int, default=256, help="batch size for the replay buffer.")
+    parser.add_argument('--batch_size', type=int, default=64, help="batch size for the replay buffer.")
     parser.add_argument('--buffer_size', type=int, default=50000, help="capacity of the replay buffer.") 
     parser.add_argument('--gamma', type=int, default=0.999, help="discount factor.")
     parser.add_argument('--learning_rate', '-lr', type=float, default=0.0001, help="learning rate for the q network.")
