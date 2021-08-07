@@ -40,9 +40,9 @@ class SingleVolumeEnvironment(BaseEnvironment):
         self.Segmentation = Segmentation
 
         # get an approximated location for the 4-chamber slice using the centroids
-        LVcentroid = get_centroid(segmentation, 2885)
-        RVcentroid = get_centroid(segmentation, 2897)
-        LAcentroid = get_centroid(segmentation, 2893)
+        LVcentroid = get_centroid(Segmentation, 2885)
+        RVcentroid = get_centroid(Segmentation, 2897)
+        LAcentroid = get_centroid(Segmentation, 2893)
         self.goal_state = np.vstack([LVcentroid, RVcentroid, LAcentroid])
         # get the corresponding plane coefficients
         self.goal_plane = self.get_plane_coefs(LVcentroid,RVcentroid,LAcentroid)
