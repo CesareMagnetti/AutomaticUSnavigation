@@ -71,7 +71,7 @@ def train(config, local_model, target_model, wandb_entity="us_navigation", sweep
                                 local_model.save(os.path.join(agent.checkpoints_dir, "latest.pth"))
                                 target_model.save(os.path.join(agent.checkpoints_dir, "episode%d.pth"%episode))
                         # test the greedy policy on a random environment and send logs to wandb
-                        out = agent.test_agent(config.n_steps_per_episode, envs[np.random.randint(agent.n_envs)], local_model)
+                        out = agent.test_agent(config.n_steps_per_episode, [envs[np.random.randint(agent.n_envs)]], local_model)
                         for key, log in out.items():
                             wandb.log(log["wandb"], commit=True)
                             # animate the trajectory followed by the agent in the current episode
