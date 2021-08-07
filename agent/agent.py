@@ -239,6 +239,9 @@ class MultiVolumeAgent(SingleVolumeAgent):
             total_loss+=loss.item()
         # set back to eval mode as we will only be training inside this function
         local_model.eval()
+        # decrease eps and increase beta after each training step
+        self.eps = max(self.eps*self.EPS_DECAY_FACTOR, self.config.eps_end)
+        self.beta = min(self.beta*self.BETA_DECAY_FACTOR, self.config.beta_end)
         return loss/n_iter
 
     # rewrite the test agent function
