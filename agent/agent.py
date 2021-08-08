@@ -233,8 +233,11 @@ class MultiVolumeAgent(SingleVolumeAgent):
         local_model.train()
         total_loss = 0
         for i in tqdm(range(n_iter), desc="training Qnetwork..."):
-            # 1. sample batch
+            # 1. sample batch and send to GPU
             batch = self.prepare_batch(envs, buffers)
+            for key in batch:
+                if key!="indices":
+                    batch[key] = batch[key].to(self.config.device)
             # 2. take a training step
             loss, deltas = self.learn(batch, local_model, target_model, optimizer, criterion)
             # 3. update priorities for each buffer separately (do this in parallel)
