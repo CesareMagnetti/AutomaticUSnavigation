@@ -208,6 +208,7 @@ class SingleVolumeEnvironment(BaseEnvironment):
             done = not increment.any()
         else:
             raise ValueError('unknown termination method: {}'.format(self.config.termination))
+        
         # return transition and the sample
         return (state, action, rewards, next_state, done), sample
     

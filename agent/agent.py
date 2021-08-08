@@ -73,7 +73,7 @@ class SingleVolumeAgent(BaseAgent):
         sample = env.sample_plane(env.state, preprocess=True, return_seg=True)
         # play an episode greedily
         with torch.no_grad():
-            for _ in tqdm(range(1, steps+1), desc="testing..."):
+            for step in tqdm(range(1, steps+1), desc="testing..."):
                 # add logs to output dict  
                 out["planes"].append(sample["plane"].squeeze())
                 out["segs"].append(sample["seg"].squeeze())
@@ -89,6 +89,7 @@ class SingleVolumeAgent(BaseAgent):
                 sample = next_sample
                 # if done, end episode early
                 if transition[-1]:
+                    out["planes"].extend([sample["plane"].squeeze()]*(steps-step))
                     out["terminal_plane"] = sample["plane"].squeeze()
                     break
         # add logs for wandb to out
@@ -136,7 +137,7 @@ class SingleVolumeAgent(BaseAgent):
         next_states = torch.from_numpy(np.vstack(sample["plane"][self.config.batch_size:])).float()
         rewards = torch.from_numpy(np.hstack(rewards)).unsqueeze(-1).float()
         actions = torch.from_numpy(np.hstack(actions)).unsqueeze(-1).long()
-        dones = torch.from_numpy(dones).unsqueeze(-1).bool()
+        dones = torch.tensor(dones).unsqueeze(-1).bool()
         # organize batch and return
         batch = {"states": states, "actions": actions, "rewards": rewards, "next_states": next_states, "dones": dones, "weights": weights, "indices": indices}
         return batch

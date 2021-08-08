@@ -43,7 +43,7 @@ def gather_options(phase="train"):
     # termination specs
     parser.add_argument('--termination', type=str, default="oscillate", help="options: <oscillate, learned> whether we terminate the episode when the agent starts to oscillate or if we learn termination with an extra action.")
     parser.add_argument('--termination_history_len', type=int, default=20, help="number of history frames to check oscillations on termination.")
-    parser.add_argument('--termination_oscillation_freq', type=int, default=5, help="if in the last ``termination_history_len`` steps there are more than this number of equal planes, terminate the episode for oscillation.")
+    parser.add_argument('--termination_oscillation_freq', type=int, default=3, help="if in the last ``termination_history_len`` steps there are more than this number of equal planes, terminate the episode for oscillation.")
     
     # reward signal shaping
     parser.add_argument('--mainReward', type=str, default="planeDistanceReward", help="main reward signal, either based on anatomical content of interest, distance from goal plane or both. see rewards/rewards.py for more info.")
