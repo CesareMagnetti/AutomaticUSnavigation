@@ -40,7 +40,7 @@ class CT2USSingleVolumeEnvironment(SingleVolumeEnvironment):
 
 class LocationAwareCT2USSingleVolumeEnvironment(LocationAwareSingleVolumeEnvironment):
     def __init__(self, config, vol_id=0):
-        SingleVolumeEnvironment.__init__(self, config, vol_id)
+        LocationAwareSingleVolumeEnvironment.__init__(self, config, vol_id)
         # load the queried CT2US model
         self.CT2USmodel = get_model(config.ct2us_model_name).to(config.device)
     
@@ -63,7 +63,10 @@ class LocationAwareCT2USSingleVolumeEnvironment(LocationAwareSingleVolumeEnviron
         # transform the image to US (do not store gradients)
         with torch.no_grad():
             plane = self.CT2USmodel(sample["planeCT"]).detach().cpu().numpy()
-            sample["plane"] = np.stack([plane[0, ...], sample["plane"][1:, ...]/255])
+            # concatenate new plane with the positional embeddings
+            #pos = [p/255 for p in np.split(sample["plane"], sample["plane"].shape[0], axis=0)]
+            pos = sample["plane"][1:, ...]/255
+            sample["plane"] = np.concatenate([plane, + pos[np.newaxis, ...]], axis=1)
         # remove planeCT from GPU and convert to numpy
         sample["planeCT"] = sample["planeCT"].detach().cpu().numpy() 
         # both planes are already unsqueezed and normalized, if we did not want to preprocess the image then squeeze and multiply by 255 to undo preprocessing

@@ -42,12 +42,12 @@ class SingleVolumeAgent(BaseAgent):
                 # step the environment to return a transitiony  
                 transition, next_sample = env.step(actions, preprocess=True)
                 # add (state, action, reward, next_state) to buffer
-                buffer.add(*transition)
-                # learn every UPDATE_EVERY steps and if enough samples in env.buffer
-                # if self.t_step % self.config.update_every == 0 and len(buffer) > self.config.batch_size:
-                #     episode_loss+=self.learn(env, buffer, local_model, target_model, optimizer, criterion)
+                buffer.add(transition)
                 # set sample to next sample
                 sample= next_sample
+                # if done, end episode early
+                if transition[-1]:
+                    break
         # return episode logs
         logs = env.logs
         #logs.update({"loss": episode_loss, "epsilon": self.eps, "beta": self.beta})
@@ -84,9 +84,13 @@ class SingleVolumeAgent(BaseAgent):
                 # get action from current state
                 actions = self.act(sample["plane"], local_model)
                 # observe transition and next_slice
-                transition, next_sample = env.step(actions, preprocess=True, return_seg=True)
+                transition, next_sample = env.step(actions, preprocess=True)
                 # set slice to next slice
                 sample = next_sample
+                # if done, end episode early
+                if transition[-1]:
+                    out["terminal_plane"] = sample["plane"].squeeze()
+                    break
         # add logs for wandb to out
         out["wandb"] = {log+"_test": r for log,r in env.logs.items()}
         # re-arrange the logs key so that it goes from list of dicts to dict of lists
@@ -98,8 +102,11 @@ class SingleVolumeAgent(BaseAgent):
         local_model.train()
         total_loss = 0
         for i in range(n_iter):
-            # 1. sample batch
+            # 1. sample batch and send to GPU
             batch = self.prepare_batch(env, buffer)
+            for key in batch:
+                if key!="indices":
+                    batch[key] = batch[key].to(self.config.device)
             # 2. take a training step
             loss, deltas =self.learn(batch, local_model, target_model, optimizer, criterion)
             # 3. update priorities
@@ -120,17 +127,18 @@ class SingleVolumeAgent(BaseAgent):
         """
         # 1. sample transitions, weights and indices (for prioritization)
         batch, weights, indices = buffer.sample(beta=self.beta)
-        weights = torch.from_numpy(weights).float().squeeze().to(self.config.device)
-        states, actions, rewards, next_states = batch
+        weights = torch.from_numpy(weights).float().squeeze()
+        states, actions, rewards, next_states, dones = batch
         # 2. sample planes and next_planes using multiple threads
         sample = env.sample_planes(states+next_states, preprocess=True)
         # 3. preprocess each item
-        states = torch.from_numpy(np.vstack(sample["plane"][:self.config.batch_size])).float().to(self.config.device)
-        next_states = torch.from_numpy(np.vstack(sample["plane"][self.config.batch_size:])).float().to(self.config.device)
-        rewards = torch.from_numpy(np.hstack(rewards)).unsqueeze(-1).float().to(self.config.device)
-        actions = torch.from_numpy(np.hstack(actions)).unsqueeze(-1).long().to(self.config.device)
+        states = torch.from_numpy(np.vstack(sample["plane"][:self.config.batch_size])).float()
+        next_states = torch.from_numpy(np.vstack(sample["plane"][self.config.batch_size:])).float()
+        rewards = torch.from_numpy(np.hstack(rewards)).unsqueeze(-1).float()
+        actions = torch.from_numpy(np.hstack(actions)).unsqueeze(-1).long()
+        dones = torch.from_numpy(dones).unsqueeze(-1).bool()
         # organize batch and return
-        batch = {"states": states, "actions": actions, "rewards": rewards, "next_states": next_states, "weights": weights, "indices": indices}
+        batch = {"states": states, "actions": actions, "rewards": rewards, "next_states": next_states, "dones": dones, "weights": weights, "indices": indices}
         return batch
 
     def learn(self, batch, local_model, target_model, optimizer, criterion):
@@ -208,14 +216,15 @@ class MultiVolumeAgent(SingleVolumeAgent):
                                                                                buffer) for idx, (env, buffer) in enumerate(zip(envs, buffers))}
         batches = [f.result() for f in futures.values()]
         # 2. concatenate states, actions, rewards, next_states, weights and indices from all buffers into a single batch
-        states = torch.cat([batch["states"] for batch in batches], dim=0).to(self.config.device)
-        actions = torch.cat([batch["actions"] for batch in batches], dim=1).to(self.config.device)
-        rewards = torch.cat([batch["rewards"] for batch in batches], dim=1).to(self.config.device)
-        next_states = torch.cat([batch["next_states"] for batch in batches], dim=0).to(self.config.device)
-        weights = torch.cat([batch["weights"] for batch in batches], dim=0).to(self.config.device)
+        states = torch.cat([batch["states"] for batch in batches], dim=0)
+        actions = torch.cat([batch["actions"] for batch in batches], dim=1)
+        rewards = torch.cat([batch["rewards"] for batch in batches], dim=1)
+        next_states = torch.cat([batch["next_states"] for batch in batches], dim=0)
+        dones = torch.cat([batch["dones"] for batch in batches], dim=0)
+        weights = torch.cat([batch["weights"] for batch in batches], dim=0)
         indices = np.stack([batch["indices"] for batch in batches])
         # organize batch and return
-        batch = {"states": states, "actions": actions, "rewards": rewards, "next_states": next_states, "weights": weights, "indices": indices}
+        batch = {"states": states, "actions": actions, "rewards": rewards, "next_states": next_states, "dones": dones, "weights": weights, "indices": indices}
         return batch
     
     # rewrite the train function

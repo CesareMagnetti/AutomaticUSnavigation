@@ -25,6 +25,8 @@ class BaseAgent(object):
             os.makedirs(self.results_dir)
 
         # setup the action size and the number of agents
+        if config.termination == "learned":
+            assert config.action_size == 7, "action_size must be set to 7 when termination is learned."
         self.n_agents, self.action_size = config.n_agents, config.action_size
 
         # place holder for steps and episode counts

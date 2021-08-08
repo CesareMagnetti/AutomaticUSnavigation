@@ -4,6 +4,7 @@ import torch.nn as nn
 def setup_networks(config):
     # manual seed
     torch.manual_seed(config.seed)
+    # setup correct channels if we are location aware
     nchannels = 1 if not config.location_aware else 4
     # 1. instanciate the Qnetworks
     if config.default_Q is None:

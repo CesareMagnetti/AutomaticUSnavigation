@@ -22,14 +22,46 @@ class Visualizer():
         self.savedir = os.path.join(savedir, "visuals")
         if not os.path.exists(self.savedir):
             os.makedirs(self.savedir)
-        
-    def render_frames(self, frames, fname, fps=10):
-        # if location aware we have 4 channels (1 anatomical slice + 3 location maps, concatenate as 2x2)
-        if len(frames[0].shape) > 2:
-            frames = [np.vstack([np.hstack(elem[:2, ...]), np.hstack(elem[2:, ...])]) for elem in frames]
-        # make 3 channels for ImageSequenceClip
-        frames = [elem[..., np.newaxis]*np.ones(3)*255 for elem in frames]
-        # generate the gif
+
+    @staticmethod
+    def preprocess_inputs(*args):
+        new_args = []
+        for arg in args:
+            arg = np.array(arg)
+            if len(arg.shape)>3:
+                # convert to list of 1channel trajectories, normalize and append to new args
+                arg = np.split(arg, arg.shape[1], axis=1)
+                new_args.extend([a.squeeze()/a.max() for a in arg])
+            else:
+                # trajectory was already 1 channel
+                new_args.append(np.array(arg))
+        return new_args
+
+    @staticmethod
+    def stack_trajectories(*args, n_rows):
+        # 1. get grid specs
+        N = len(args)
+        n_cols = int(N/n_rows) + int(not N%n_rows == 0)
+        n_padding = n_rows*n_cols-N
+        # add padding trajectories
+        if n_padding>0:
+            for i in range(n_padding):
+                args += (np.ones_like(args[0]),)       
+        # 2. stack arrays accordingly
+        frames = np.concatenate([np.concatenate(args[row*n_cols:(row+1)*n_cols], axis=-1) for row in range(n_rows)], axis=1)
+        return frames
+
+    def render_frames(self, *args, fname="trajectory.gif", n_rows=1, fps=10):
+        """Render frames from multiple inputs, assuming equal number of frames per input and equal frames shape per input.
+        """
+        # 1. process inputs to be 1 channel trajectories
+        args = self.preprocess_inputs(*args)
+        # 2. stack all trajectories as queried
+        frames = self.stack_trajectories(*args, n_rows=n_rows)
+        # 3. to make this work with ImageSequenceClip we need to make RGB (we assumed 1channel trajectories), we also need to unnormalize to uint8
+        frames = frames[..., np.newaxis]*np.ones(3)*255
+        # 4. generate the gif (note that ImageSequenceClip wants a list as an input)
+        frames = [f.squeeze() for f in np.split(frames, frames.shape[0], axis=0)]
         clip = ImageSequenceClip(frames, fps=fps)
         clip.write_gif(os.path.join(self.savedir, fname), fps=fps)
 
@@ -44,24 +76,30 @@ class Visualizer():
                 plot_objects[4].set_text("oob: {:.2f}".format(logs["oobReward_3"][num]))
                 plot_objects[5].set_text("area reward: {:.4f}".format(logs["areaReward"][num]))
                 plot_objects[7].set_data(frames[num])                             
-                plot_objects[8].set_text("anatomy reward: {:.4f}".format(logs["anatomyReward"][num]))
+                plot_objects[8].set_text(main_rewards_text.format(*[logs[key][num] for key in main_rewards]))
                 for plot, log in zip(plot_objects[9], logs.values()):
                     plot.set_data(range(len(log[:num])), log[:num]/(abs(log).max()+10e-6)) # normalize for ease of visualization
                 return plot_objects
 
             # gather useful information
+            logs = out["logs"]
             for key in logs:
                 logs[key] = np.array(logs[key])
+            main_rewards, main_rewards_text = [], ""
+            if "anatomyReward" in logs:
+                main_rewards.append("anatomyReward")
+                main_rewards_text+="anatomyReward: {:.4f}"
+            if "planeDistanceReward" in logs:
+                if "anatomyReward" in logs:
+                    main_rewards_text+="\n"
+                main_rewards.append("planeDistanceReward")
+                main_rewards_text+="planeDistanceReward: {:.4f}"
+
             # 2. stack the states in a single numpy array
             states = np.vstack([state[np.newaxis, ...] for state in out["states"]])
-            # 3. process theframes (the slice will always be the 0th channel in the image)
-            # images could be CxHxW if location maps are passed.
-            if len(out["planes"][0].shape) == 2:
-                frames = out["planes"]
-            elif len(out["planes"][0].shape) == 3:
-                frames = [np.vstack([np.hstack(elem[:2, ...]), np.hstack(elem[2:, ...])]) for elem in out["planes"]]
-            else:
-                raise ValueError("entries in out['frames'] have wrong dimensionality.")
+            # 3. process the frames
+            frames = self.preprocess_inputs(out["planes"])
+            frames = self.stack_trajectories(*frames, n_rows=int(np.sqrt(len(frames))))
 
             # Attaching 3D axis to the figure
             fig = plt.figure(figsize=(14, 4))
@@ -79,7 +117,7 @@ class Visualizer():
                             ax.text2D(0.5, 0.95, "oob: ", color='green', transform=ax.transAxes),
                             ax.text2D(0.8, 0.95, "oob: ", color='blue', transform=ax.transAxes),
                             # add the current reward the agents receive for distancing from each other (not clustering at a point)
-                            ax.text2D(0.3, 1, "area reward: ", color='black', transform=ax.transAxes),
+                            ax.text2D(0.3, 1, main_rewards_text, color='black', transform=ax.transAxes),
                             # 3. plot the boundaries of the volume as a reference
                             plot_linear_cube(ax, 0, 0, 0, 256, 256, 256)[0],
                             # 4. plot the current imaged slice on the second subplot

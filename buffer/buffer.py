@@ -16,10 +16,9 @@ class ReplayBuffer:
         self.batch_size = batch_size
         self.memory = deque(maxlen=buffer_size)
 
-    def add(self, state, action, reward, next_state):
+    def add(self, transition):
         """Add a new experience to memory."""
-        e = (state, action, reward, next_state)
-        self.memory.append(e)
+        self.memory.append(transition)
     
     def sample(self):
         """Randomly sample a batch of experiences from memory."""
@@ -42,9 +41,9 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         self.prob_alpha = prob_alpha
         self.priorities = deque(maxlen=buffer_size)
     
-    def add(self, state, action, reward, next_state):
+    def add(self, transition):
         # 1. add to experience
-        super(PrioritizedReplayBuffer, self).add(state, action, reward, next_state)
+        super(PrioritizedReplayBuffer, self).add(transition)
         # 2. add to buffer with max probability to incentivize exploration of new transitions
         max_prio = max(self.priorities) if len(self.priorities)>0 else 1.0
         self.priorities.append(max_prio)

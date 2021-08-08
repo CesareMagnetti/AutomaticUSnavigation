@@ -1,4 +1,5 @@
 import numpy as np
+from collections import deque, Counter
 
 class PlaneDistanceReward(object):
     """Class to assign a reward based on the plane distance between the plane defined by the current state and the goal plane
@@ -8,36 +9,52 @@ class PlaneDistanceReward(object):
         self.goal = goal
         self.previous_plane = None
     
-    def __call__(coefs):
+    def __call__(self, coefs):
         # if previous plane is none (first step) set it equal to the current step -> reward of zero at the beginning
         if self.previous_plane is None:
-            self.previous_plane = coefs
+            raise ValueError('self.previous_plane not defined. Overwrite it as ``instance.previous_plane = self.get_plane_coefs(pointA, pointB, pointC)``')
         # calculate euclidean distance between current plane and the goal
         D1 = ((coefs-self.goal)**2).sum()
         # calculate distance between previous plane and goal
         D2 = ((self.previous_plane-self.goal)**2).sum()
         # store plane as the new previous plane
         self.previous_plane = np.array(coefs)
-        # return sign function of distance improvement
+        # return sign function of distance improvement (D1 should be smaller than D2 if we are getting closer -> +1 if closer, -1 if further, 0 if same distance)
         return np.sign(D2-D1)
+        # return distance improvement (D1 should be smaller than D2 if we are getting closer)
+        #return D2-D1
+
+class Oscillate(object):
+    def __init__(self, history_length, stop_freq):
+        self.history = deque(maxlen=history_length)
+        self.stop_freq = stop_freq
+    
+    def __call__(self, state):
+        # append new state
+        self.history.append(state)
+        # get frequency of seen states in hystory
+        counter = Counter(self.history)
+        freq = counter.most_common()
+        # if most common plane seen more than stop_freq, then stop
+        if freq[0][1] > self.stop_freq:
+            return True
+        else:
+            return False
 
 class AnatomyReward(object):
     """Class to assign the anatomical reward signal. we reward based on a particular anatomical structure being present
     in the slice sampled by the current state to this end we have segmentations of the volume and reward_id corresponds
     to the value of the anatomical tissue of interest in the segmentation (i.e. the ID of the left ventricle is 2885).
     """
-    def __init__(self, rewardIDs, is_penalty=False):
+    def __init__(self, rewardIDs, is_penalty=False, incremental=False):
         # if more IDs are passed store in an array
         self.IDs = [int(ID) for ID in rewardIDs.split(",")]
         self.is_penalty = is_penalty
-    
-    def __call__(self, seg):
-        """ evaluates the anotical reward as the ratio of pixels containing structures of interest in the segmented slice.
-        Params:
-        ==========
-            seg (np.ndarray): segmented slice of the current state.
-        returns -> float, ratio of pixels of interest wrt slice pixel count.
-        """
+        self.incremental = incremental
+        if incremental:
+            self.previous_reward = None
+
+    def get_anatomy_reward(self, seg):
         rewardAnatomy = 0
         for ID in self.IDs:
             rewardAnatomy += (seg==ID).sum().item()
@@ -45,6 +62,22 @@ class AnatomyReward(object):
         if self.is_penalty:
             rewardAnatomy*=-1
         return rewardAnatomy
+
+    def __call__(self, seg):
+        """ evaluates the anotical reward as the ratio of pixels containing structures of interest in the segmented slice.
+        Params:
+        ==========
+            seg (np.ndarray): segmented slice of the current state.
+        returns -> float, ratio of pixels of interest wrt slice pixel count.
+        """
+        if not self.incremental:
+            return self.get_anatomy_reward(seg)
+        else:
+            # the current slice should have higher anatomical reward if we are getting closer -> +1 if more anatomical content, -1 if less, 0 if same
+            current_reward = self.get_anatomy_reward(seg)
+            reward = np.sign(current_reward - self.previous_reward)
+            self.previous_reward = current_reward
+            return reward
 
 class SteppingReward(object):
     """Class to assign the default reward received upon making a step. we give a small penalty for each step in which the above ID

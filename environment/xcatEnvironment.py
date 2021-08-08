@@ -3,6 +3,7 @@ from rewards.rewards import *
 import numpy as np
 import SimpleITK as sitk
 import torch, os
+import scipy.ndimage as ndimage
 
 class SingleVolumeEnvironment(BaseEnvironment):
     def __init__(self, config, vol_id=0):
@@ -48,14 +49,26 @@ class SingleVolumeEnvironment(BaseEnvironment):
         self.goal_plane = self.get_plane_coefs(LVcentroid,RVcentroid,LAcentroid)
 
         # setup the reward function handling:
-        self.logged_rewards = ["anatomyReward"]
-        self.rewards = {"anatomyReward": AnatomyReward(config.anatomyRewardIDs)}
-        if config.planeDistanceReward:
+        self.logged_rewards = []
+        self.rewards = {}
+        if config.mainReward == "planeDistanceReward":
             self.logged_rewards.append("planeDistanceReward")
             self.rewards["planeDistanceReward"] = PlaneDistanceReward(self.goal_plane)
-        if abs(config.steppingReward) > 0:
-            self.logged_rewards.append("steppingReward")
-            self.rewards["steppingReward"] = SteppingReward(config.steppingReward)
+        elif config.mainReward == "anatomyReward":
+            self.logged_rewards.append("anatomyReward")
+            self.rewards["anatomyReward"] = AnatomyReward(config.anatomyRewardIDs, incremental=config.incrementalAnatomyReward)
+        elif config.mainReward == "both":
+            self.logged_rewards.append("planeDistanceReward")
+            self.rewards["planeDistanceReward"] = PlaneDistanceReward(self.goal_plane)
+            self.logged_rewards.append("anatomyReward")
+            self.rewards["anatomyReward"] = AnatomyReward(config.anatomyRewardIDs, incremental=config.incrementalAnatomyReward)
+        else:
+            raise ValueError('unknown ``mainReward`` parameter. options: <planeDistanceReward,anatomyReward,both> got: {}'.format(config.mainReward))
+        # # stepping reward not that effective when considering incremental rewards 
+        # #(the agent would already receive a penalty for stepping if it worsens the view) 
+        # if abs(config.steppingReward) > 0:
+        #     self.logged_rewards.append("steppingReward")
+        #     self.rewards["steppingReward"] = SteppingReward(config.steppingReward)
         if abs(config.areaRewardWeight) > 0:
             self.logged_rewards.append("areaReward")
             self.rewards["areaReward"] = AreaReward(config.areaRewardWeight, self.sx*self.sy)
@@ -63,14 +76,18 @@ class SingleVolumeEnvironment(BaseEnvironment):
             for i in range(config.n_agents):
                 self.logged_rewards.append("oobReward_%d"%(i+1))
             self.rewards["oobReward"] = OutOfBoundaryReward(config.oobReward, self.sx, self.sy, self.sz)
-        if abs(config.stopReward) > 0:
-            self.logged_rewards.append("stopReward")
-            self.rewards["stopReward"] = StopReward(config.stopReward)
+        # TODO: find a way to integrate the stop reward in a meaningful way
+        # if abs(config.stopReward) > 0:
+        #     self.logged_rewards.append("stopReward")
+        #     self.rewards["stopReward"] = StopReward(config.stopReward)
         if config.penalize_oob_pixels:
             self.logged_rewards.append("oobPixelsReward")
             self.rewards["oobPixelsReward"] = AnatomyReward("0", is_penalty=True)           
-                
-        # get starting configuration
+
+        # monitor oscillations for termination
+        self.oscillates = Oscillate(history_length=config.termination_history_len, stop_freq=config.termination_oscillation_freq) 
+
+        # get starting configuration and reset environment for a new episode
         self.reset()
 
     def sample_plane(self, state, return_seg=False, oob_black=True, preprocess=False, **kwargs):
@@ -123,19 +140,26 @@ class SingleVolumeEnvironment(BaseEnvironment):
         for key, func in self.rewards.items():
             if key == "planeDistanceReward":
                 # this will contain a single reward for all agents
-                shared_rewards["planeDistanceReward"] = func(self.get_plane_coefs(state))
+                shared_rewards["planeDistanceReward"] = func(self.get_plane_coefs(*state))
             elif key == "anatomyReward":
                 # this will contain a single reward for all agents
-                shared_rewards["anatomyReward"] = func(seg)               
-            elif key == "steppingReward":
-                # this will contain a single reward for all agents
-                shared_rewards["steppingReward"] = func(not shared_rewards["anatomyReward"]>0)
+                shared_rewards["anatomyReward"] = func(seg) 
+
+            # # stepping reward not that effective when considering incremental rewards 
+            # #(the agent would already receive a penalty for stepping if it worsens the view)             
+            # elif key == "steppingReward":
+            #     # this will contain a single reward for all agents
+            #     shared_rewards["steppingReward"] = func(not shared_rewards["anatomyReward"]>0)
+
             elif key == "areaReward":
                 # this will contain a single reward for all agents
                 shared_rewards["areaReward"] = func(state)
-            elif key == "stopReward":
-                # this will contain a single reward for all agents
-                shared_rewards["stopReward"] = func(increment, not shared_rewards["anatomyReward"]>0)
+            
+            # TODO: find a way to integrate the stop reward in a meaningful way
+            # elif key == "stopReward":
+            #     # this will contain a single reward for all agents, only really applicable when we are using anatomyReward
+            #     shared_rewards["stopReward"] = func(increment, not shared_rewards["anatomyReward"]>0)
+
             elif key == "oobPixelsReward":
                 # this will contain a single reward for all agents
                 shared_rewards["oobPixelsReward"] = func(seg)
@@ -158,12 +182,11 @@ class SingleVolumeEnvironment(BaseEnvironment):
             self.logs[r]+=shared_rewards[r]   
         return total_rewards[..., np.newaxis].astype(np.float)
 
-    def step(self, action, preprocess=False, return_seg=False):
+    def step(self, action, preprocess=False):
         """Perform an input action (discrete action), observe the next state and reward.
         Params:
         ==========
             action (int): discrete action (see baseEnvironment.mapActionToIncrement())
-            return_seg (bool): flag if we wish to return the corresponding segmentation map. (default=False)
             preprocess (bool): if to preprocess the plane before returning it (unsqueeze to BxCxHxW, normalize)
         """
         # get the increment corresponding to this action
@@ -176,15 +199,24 @@ class SingleVolumeEnvironment(BaseEnvironment):
         rewards = self.get_reward(sample["seg"], next_state, increment)
         # update the current state
         self.state = next_state
+        # episode termination, when done is True, the agent will consider only immediate rewards (no bootstrapping)
+        if self.config.termination == "oscillate":
+            # check if oscillating for episode termination
+            done = self.oscillates(tuple(self.get_plane_coefs(*next_state)))
+        elif self.config.termination == "learned":
+            # check if all agents chose to stop (increment will be all zero)
+            done = not increment.any()
+        else:
+            raise ValueError('unknown termination method: {}'.format(self.config.termination))
         # return transition and the sample
-        return (state, action, rewards, next_state), sample
+        return (state, action, rewards, next_state, done), sample
     
     def reset(self):
         if self.config.easy_objective:
             # shuffle rows of the goal state
             np.random.shuffle(self.goal_state)
             # add a random increment of +/- 10 pixels to this goal state
-            noise = np.random.randint(low=-10, high=10, size=(3,3))
+            noise = np.random.randint(low=-20, high=20, size=(3,3))
             self.state = self.goal_state + noise
         else:
             # sample a random plane (defined by 3 points) to start the episode from
@@ -204,6 +236,16 @@ class SingleVolumeEnvironment(BaseEnvironment):
         # reset the logged rewards for this episode
         self.logs = {r: 0 for r in self.logged_rewards}
         self.current_logs = {r: 0 for r in self.logged_rewards}
+        # set the previous plane attribute in the planeDistanceReward if present
+        if "planeDistanceReward" in self.rewards:
+            self.rewards["planeDistanceReward"].previous_plane = self.get_plane_coefs(*self.state)
+        # set the previous anatomyReward if we are using incremental anatomy reward
+        if "anatomyReward" in self.rewards and self.config.incrementalAnatomyReward:
+            #sample = self.sample_plane(self.state, return_seg=True)
+            #self.rewards["anatomyReward"].previous_reward = self.rewards["anatomyReward"].get_anatomy_reward(sample["seg"])
+            self.rewards["anatomyReward"].previous_reward = 0
+        # reset the oscillation monitoring
+        self.oscillates.history.clear()
 
 # ======== LOCATION AWARE ENV ==========
 class LocationAwareSingleVolumeEnvironment(SingleVolumeEnvironment):
@@ -228,8 +270,9 @@ class LocationAwareSingleVolumeEnvironment(SingleVolumeEnvironment):
         SingleVolumeEnvironment.__init__(self, config, vol_id)
         # generate cube for agent position retrieval
         self.agents_cube = np.zeros_like(self.Volume)
+
     
-    def sample_agents_position(self, state, X, Y, Z, radius=10):
+    def sample_agents_position(self, state, X, Y, Z):
         
         """ function to get the agents postion on the sampled plane
         Params:

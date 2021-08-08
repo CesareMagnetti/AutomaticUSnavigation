@@ -37,17 +37,26 @@ def gather_options(phase="train"):
     parser.add_argument('--no_batchnorm_Q', action='store_true', help="if use batch normalization in the Qnetwork.")
 
     # agent specs
-    parser.add_argument('--action_size', type=int, default=7, help="how many action can a single agent perform.\n(i.e. up/down,left/right,forward/backwards,do nothing = 7 in a 3D volume).")
+    parser.add_argument('--action_size', type=int, default=6, help="how many action can a single agent perform.\n(i.e. up/down,left/right,forward/backwards,do nothing = 7 in a 3D volume).")
     parser.add_argument('--n_agents', type=int, default=3, help="how many RL agents (heads) will share the same CNN backbone.")
 
+    # termination specs
+    parser.add_argument('--termination', type=str, default="oscillate", help="options: <oscillate, learned> whether we terminate the episode when the agent starts to oscillate or if we learn termination with an extra action.")
+    parser.add_argument('--termination_history_len', type=int, default=20, help="number of history frames to check oscillations on termination.")
+    parser.add_argument('--termination_oscillation_freq', type=int, default=5, help="if in the last ``termination_history_len`` steps there are more than this number of equal planes, terminate the episode for oscillation.")
+    
     # reward signal shaping
-    parser.add_argument('--anatomyRewardIDs', type=str, default="2885", help="ID of the anatomical structure of interest. (default: left ventricle, 2885). if multiple IDs separate by comma.")
-    parser.add_argument('--oobReward', type=float, default=0.01, help='how much to penalis=ze each out of boundary step of an agent.')
-    parser.add_argument('--areaRewardWeight', type=float, default=0.01, help='how much to incentivize the agents to maximize the area of the triangle they span.\n'\
-                                                                             'This is to prevent them from moving towards the edges of a volume, which are meaningless.')
-    parser.add_argument('--steppingReward', type=float, default=0.01, help="give a small penalty for each step to incentivize moving towards planes of interest.")
-    parser.add_argument('--stopReward', type=float, default=0.01, help="give a penalty when the agents decide to stop on a bad frame.")
-    parser.add_argument('--penalize_oob_pixels', action='store_true', help="it will give a penalty equal to the ratio of oob pixels in a sampled slice.")
+    parser.add_argument('--mainReward', type=str, default="planeDistanceReward", help="main reward signal, either based on anatomical content of interest, distance from goal plane or both. see rewards/rewards.py for more info.")
+    parser.add_argument('--anatomyRewardIDs', type=str, default="2885", help="segmentation IDs for the anatomical reward, see rewards/rewards.py for more info.\n"\
+                                                                             "(default: left ventricle, 2885). if multiple IDs separate by comma. some IDs of interest are LV:2885,RV:2897,LA:2893.")
+    parser.add_argument('--incrementalAnatomyReward', action='store_true', help="whether the agent is rewarded on the improvement of anatomical content or on the current anatomical content.")
+    parser.add_argument('--oobReward', type=float, default=0.01, help='penalize each agent if it steps outside the boundaries of the volume, see rewards/rewards.py for more info.')
+    parser.add_argument('--areaRewardWeight', type=float, default=0.01, help='reward the agents if they stay far apart from each other (measuring area of spanned triangle), see rewards/rewards.py for more info.\n'\
+                                                                             'This is to prevent them from clustering together, which will yield rough transitions.')
+    #parser.add_argument('--steppingReward', type=float, default=0.01, help="penalize the agents for each step they take, see rewards/rewards.py for more info.")
+    #parser.add_argument('--stopReward', type=float, default=100, help="penalize the agents when they to stop on a bad frame, see rewards/rewards.py for more info.")
+    parser.add_argument('--penalize_oob_pixels', action='store_true', help="penalize the agents when they sample slices significantly out of boundary, see rewards/rewards.py for more info.\n"\
+                                                                           "It will give a penalty equal to the ratio of oob pixels in a sampled slice.")
 
 
     # random seed for reproducibility

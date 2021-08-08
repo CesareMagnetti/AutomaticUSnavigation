@@ -95,7 +95,7 @@ def setup_environment(config):
         elif config.location_aware and not config.CT2US:
             envs.append(LocationAwareSingleVolumeEnvironment(config, vol_id=vol_id))
         else:
-            raise NotImplementedError()
+            envs.append(LocationAwareCT2USSingleVolumeEnvironment(config, vol_id=vol_id))
     return envs
 
 def setup_criterion(config):

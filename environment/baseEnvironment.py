@@ -96,7 +96,7 @@ class BaseEnvironment(object):
             transition, next_slice = self.step(action)
             # add (state, action, reward, next_state) to buffer
             if buffer is not None:
-                buffer.add(*transition)
+                buffer.add(transition)
             # get the visual if needed
             if return_trajectory:
                 trajectory.append(self.state)
