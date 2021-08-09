@@ -168,7 +168,7 @@ class StopReward(object):
             return 0
         else:
             # get difference in reward from current step and the goal reward
-            D = current_reward-goal_reward # negative if doing worse than goal, positive if doing better than goal 
+            D = current_reward-self.goal_reward # negative if doing worse than goal, positive if doing better than goal 
             # scale reward as queried
             return self.scale*D
 
