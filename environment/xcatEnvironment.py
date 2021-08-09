@@ -48,49 +48,54 @@ class SingleVolumeEnvironment(BaseEnvironment):
         # get the corresponding plane coefficients
         self.goal_plane = self.get_plane_coefs(LVcentroid,RVcentroid,LAcentroid)
 
+        # monitor oscillations for termination
+        if config.termination == "oscillates":
+            self.oscillates = Oscillate(history_length=config.termination_history_len, stop_freq=config.termination_oscillation_freq) 
+
+        # initiating empty containers for reward shaping
+        self.logged_rewards, self.rewards = [], {}
+
+        # get starting configuration and reset environment for a new episode
+        self.reset()
+
+    def set_reward(self):
         # setup the reward function handling:
-        self.logged_rewards = []
-        self.rewards = {}
-        if config.mainReward == "planeDistanceReward":
+        if self.config.mainReward == "planeDistanceReward":
             self.logged_rewards.append("planeDistanceReward")
             self.rewards["planeDistanceReward"] = PlaneDistanceReward(self.goal_plane)
-        elif config.mainReward == "anatomyReward":
+        elif self.config.mainReward == "anatomyReward":
             self.logged_rewards.append("anatomyReward")
-            self.rewards["anatomyReward"] = AnatomyReward(config.anatomyRewardIDs, incremental=config.incrementalAnatomyReward)
-        elif config.mainReward == "both":
+            self.rewards["anatomyReward"] = AnatomyReward(self.config.anatomyRewardIDs, incremental=self.config.incrementalAnatomyReward)
+        elif self.config.mainReward == "both":
             self.logged_rewards.append("planeDistanceReward")
             self.rewards["planeDistanceReward"] = PlaneDistanceReward(self.goal_plane)
             self.logged_rewards.append("anatomyReward")
-            self.rewards["anatomyReward"] = AnatomyReward(config.anatomyRewardIDs, incremental=config.incrementalAnatomyReward)
+            self.rewards["anatomyReward"] = AnatomyReward(self.config.anatomyRewardIDs, incremental=self.config.incrementalAnatomyReward)
         else:
-            raise ValueError('unknown ``mainReward`` parameter. options: <planeDistanceReward,anatomyReward,both> got: {}'.format(config.mainReward))
+            raise ValueError('unknown ``mainReward`` parameter. options: <planeDistanceReward,anatomyReward,both> got: {}'.format(self.config.mainReward))
         # # stepping reward not that effective when considering incremental rewards 
         # #(the agent would already receive a penalty for stepping if it worsens the view) 
         # if abs(config.steppingReward) > 0:
         #     self.logged_rewards.append("steppingReward")
         #     self.rewards["steppingReward"] = SteppingReward(config.steppingReward)
-        if abs(config.areaRewardWeight) > 0:
+        if abs(self.config.areaRewardWeight) > 0:
             self.logged_rewards.append("areaReward")
-            self.rewards["areaReward"] = AreaReward(config.areaRewardWeight, self.sx*self.sy)
-        if abs(config.oobReward) > 0:
-            for i in range(config.n_agents):
+            self.rewards["areaReward"] = AreaReward(self.config.areaRewardWeight, self.sx*self.sy)
+        if abs(self.config.oobReward) > 0:
+            for i in range(self.config.n_agents):
                 self.logged_rewards.append("oobReward_%d"%(i+1))
-            self.rewards["oobReward"] = OutOfBoundaryReward(config.oobReward, self.sx, self.sy, self.sz)
-        if abs(config.stopReward) > 0:
+            self.rewards["oobReward"] = OutOfBoundaryReward(self.config.oobReward, self.sx, self.sy, self.sz)
+        if abs(self.config.stopReward) > 0:
             assert "anatomyReward" in self.rewards, "stopReward only implemented when using anatomyReward."
-            assert config.termination == "learned", "stopReward is only meaningful when learning how to stop (action_size = 7, termination = learned)"
+            assert self.config.termination == "learned", "stopReward is only meaningful when learning how to stop (action_size = 7, termination = learned)"
             self.logged_rewards.append("stopReward")
-            self.rewards["stopReward"] = StopReward(config.stopReward,
-                                                    goal_reward = self.rewards["anatomyReward"].get_anatomy_reward(self.sample_plane(self.goal_state)["seg"]))
-        if config.penalize_oob_pixels:
+            self.rewards["stopReward"] = StopReward(self.config.stopReward,
+                                                    goal_reward = self.rewards["anatomyReward"].get_anatomy_reward(self.sample_plane(self.goal_state,
+                                                                                                                                     return_seg=True)["seg"]))
+            print(self.rewards["stopReward"].goal_reward)
+        if self.config.penalize_oob_pixels:
             self.logged_rewards.append("oobPixelsReward")
-            self.rewards["oobPixelsReward"] = AnatomyReward("0", is_penalty=True)           
-
-        # monitor oscillations for termination
-        self.oscillates = Oscillate(history_length=config.termination_history_len, stop_freq=config.termination_oscillation_freq) 
-
-        # get starting configuration and reset environment for a new episode
-        self.reset()
+            self.rewards["oobPixelsReward"] = AnatomyReward("0", is_penalty=True)
 
     def sample_plane(self, state, return_seg=False, oob_black=True, preprocess=False, **kwargs):
         """ function to sample a plane from 3 3D points (state)
@@ -231,9 +236,11 @@ class SingleVolumeEnvironment(BaseEnvironment):
                               np.random.uniform(low=0., high=1.)*self.sz-1])             
             # stack points to define the state
             self.state = np.vstack([pointA, pointB, pointC]).astype(np.int)
+
         # reset the logged rewards for this episode
-        self.logs = {r: 0 for r in self.logged_rewards}
-        self.current_logs = {r: 0 for r in self.logged_rewards}
+        if self.logged_rewards:
+            self.logs = {r: 0 for r in self.logged_rewards}
+            self.current_logs = {r: 0 for r in self.logged_rewards}
         # set the previous plane attribute in the planeDistanceReward if present
         if "planeDistanceReward" in self.rewards:
             self.rewards["planeDistanceReward"].previous_plane = self.get_plane_coefs(*self.state)
@@ -243,7 +250,8 @@ class SingleVolumeEnvironment(BaseEnvironment):
             #self.rewards["anatomyReward"].previous_reward = self.rewards["anatomyReward"].get_anatomy_reward(sample["seg"])
             self.rewards["anatomyReward"].previous_reward = 0
         # reset the oscillation monitoring
-        self.oscillates.history.clear()
+        if self.config.termination == "oscillates":
+            self.oscillates.history.clear()
 
 # ======== LOCATION AWARE ENV ==========
 class LocationAwareSingleVolumeEnvironment(SingleVolumeEnvironment):
@@ -268,6 +276,8 @@ class LocationAwareSingleVolumeEnvironment(SingleVolumeEnvironment):
         SingleVolumeEnvironment.__init__(self, config, vol_id)
         # generate cube for agent position retrieval
         self.agents_cube = np.zeros_like(self.Volume)
+        # reset the agent to get starting configuration
+        self.reset()
 
     
     def sample_agents_position(self, state, X, Y, Z):

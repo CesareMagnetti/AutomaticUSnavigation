@@ -96,6 +96,10 @@ def setup_environment(config):
             envs.append(LocationAwareSingleVolumeEnvironment(config, vol_id=vol_id))
         else:
             envs.append(LocationAwareCT2USSingleVolumeEnvironment(config, vol_id=vol_id))
+    
+    for env in envs:
+        env.set_reward()
+        
     return envs
 
 def setup_criterion(config):
