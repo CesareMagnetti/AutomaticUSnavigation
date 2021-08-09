@@ -146,13 +146,11 @@ class SingleVolumeEnvironment(BaseEnvironment):
             elif key == "anatomyReward":
                 # this will contain a single reward for all agents
                 shared_rewards["anatomyReward"] = func(seg) 
-
             # # stepping reward not that effective when considering incremental rewards 
             # #(the agent would already receive a penalty for stepping if it worsens the view)             
             # elif key == "steppingReward":
             #     # this will contain a single reward for all agents
             #     shared_rewards["steppingReward"] = func(not shared_rewards["anatomyReward"]>0)
-
             elif key == "areaReward":
                 # this will contain a single reward for all agents
                 shared_rewards["areaReward"] = func(state)
