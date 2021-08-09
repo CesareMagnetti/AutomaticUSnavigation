@@ -6,6 +6,7 @@ from visualisation.visualizers import Visualizer
 import torch, os, json
 import numpy as np
 from matplotlib import pyplot as plt
+from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 
 if __name__ == "__main__":
     # 1. gather options
@@ -25,7 +26,7 @@ if __name__ == "__main__":
     if not os.path.exists(os.path.join(agent.results_dir, "test")):
         os.makedirs(os.path.join(agent.results_dir, "test"))
     # 6. run test experiments on all given environments and generate outputs
-    total_rewards = {}
+    total_rewards, last_frames = {},{}
     if config.mainReward in ["both", "planeDistanceReward"]:
         total_rewards["planeDistanceReward"] = {}
     if config.mainReward in ["both", "anatomyReward"]:
@@ -39,7 +40,13 @@ if __name__ == "__main__":
                 if key not in total_rewards[reward]:
                     total_rewards[reward][key] = []
                 total_rewards[reward][key].append(logs["logs"][reward])
-            # 6.2. render trajectories if queried
+            # 6.2. store last frame for visualization later
+            if len(logs["planes"][-1]>2):
+                last_frames[key] = logs["planes"][-1][0, ...].squeeze()
+            else:
+                last_frames[key] = logs["planes"][-1]
+            last_frames[key]/=last_frames[key].max()
+            # 6.3. render trajectories if queried
             if config.render:
                 print("rendering logs for: {} ([{}]/[{}])".format(key, i, len(out)))
                 if not os.path.exists(os.path.join(agent.results_dir, "test", key)):
@@ -47,19 +54,23 @@ if __name__ == "__main__":
                 visualizer.render_full(logs, fname = os.path.join(agent.results_dir, "test", key, "{}_{}.gif".format(config.fname, run)))
                 #visualizer.render_frames(logs["planes"], logs["planes"], fname="trajectory.gif", n_rows=2, fps=10)
     
-    # # 7. re-organize logged rewards
-    # fig = plt.figure()
-    # ax = plt.gca()
-    # for key, log in total_rewards.items():
-    #     log = np.array(log).astype(np.float)
-    #     means = log.mean(0)
-    #     stds = log.std(0)
-    #     color = next(ax._get_lines.prop_cycler)['color']
-    #     plt.plot(range(len(means)), means, label=key, c=color)
-    #     plt.fill_between(range(len(means)), means-stds, means+stds ,alpha=0.3, facecolor=color)
-    # plt.legend()
-    # plt.title("average anatomy reward collected in an episode")
-    # # 8. save figure
-    # if not os.path.exists(os.path.join(agent.results_dir, "test")):
-    #     os.makedirs(os.path.join(agent.results_dir, "test"))
-    # plt.savefig(os.path.join(agent.results_dir, "test", "anatomyRewards_easyObjective.pdf"))
+    # 7. re-organize logged rewards
+    for reward_key, reward in total_rewards.items():
+        fig = plt.figure()
+        ax = plt.gca()
+        for vol_id, log in reward.items():
+            log = np.array(log).astype(np.float)
+            means = log.mean(0)
+            stds = log.std(0)
+            color = next(ax._get_lines.prop_cycler)['color']
+            plt.plot(range(len(means)), means, label=vol_id, c=color)
+            plt.fill_between(range(len(means)), means-stds, means+stds ,alpha=0.3, facecolor=color)
+            ax.figure.figimage(last_frames[vol_id],len(means)-1,means[-1], alpha=0.5)
+            imagebox = OffsetImage(last_frames[vol_id], zoom=0.2)
+            ab = AnnotationBbox(imagebox, ((len(means)-1)/ax.get_xlim()[-1], means[-1]/ax.get_ylim()[-1]))
+        plt.legend()
+        plt.title("average {} collected in an episode".format(reward_key))
+        # 8. save figure
+        if not os.path.exists(os.path.join(agent.results_dir, "test")):
+            os.makedirs(os.path.join(agent.results_dir, "test"))
+        plt.savefig(os.path.join(agent.results_dir, "test", "{}_test.pdf".format(reward_key)))
