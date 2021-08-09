@@ -92,7 +92,6 @@ class SingleVolumeEnvironment(BaseEnvironment):
             self.rewards["stopReward"] = StopReward(self.config.stopReward,
                                                     goal_reward = self.rewards["anatomyReward"].get_anatomy_reward(self.sample_plane(self.goal_state,
                                                                                                                                      return_seg=True)["seg"]))
-            print(self.rewards["stopReward"].goal_reward)
         if self.config.penalize_oob_pixels:
             self.logged_rewards.append("oobPixelsReward")
             self.rewards["oobPixelsReward"] = AnatomyReward("0", is_penalty=True)

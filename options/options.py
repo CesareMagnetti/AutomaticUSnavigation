@@ -81,7 +81,10 @@ def gather_options(phase="train"):
     parser.add_argument('--learning_rate', '-lr', type=float, default=0.0001, help="learning rate for the q network.")
     parser.add_argument('--loss', type=str, default="SmoothL1", help='which loss to use to optimize the Qnetwork (MSE, SmoothL1).')
     parser.add_argument('--trainer', type=str, default="DoubleDeepQLearning", help='which training routine to use (DeepQLearning, DoubleDeepQLearning...).')
-
+    parser.add_argument('--dueling', action='store_true', help="instanciates a dueling q-network architecture, everything else is the same.")
+    parser.add_argument('--recurrent', action='store_true', help="instanciates a recurrent q-network architecture that keeps account of a history of frames, everything else is the same.")
+    parser.add_argument('--recurrent_history_len', type=int, default=10, help="number of lookup steps when using a recurrent q network.")
+    
     # training options (specific)
     parser.add_argument('--stop_decay', type=float, default=0.9, help="after what fraction of episodes we want to have eps = --eps_end or beta = --beta_end.")
     parser.add_argument('--eps_start', type=float, default=1.0, help="epsilon factor for egreedy policy, starting value.")

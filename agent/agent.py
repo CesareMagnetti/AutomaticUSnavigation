@@ -138,6 +138,8 @@ class SingleVolumeAgent(BaseAgent):
         batch, weights, indices = buffer.sample(beta=self.beta)
         weights = torch.from_numpy(weights).float().squeeze()
         states, actions, rewards, next_states, dones = batch
+        # TODO: add handle to prepare batch when recurrent Q network is used, states will be Seq_lex x B x 3 x 3
+        # if we do this right nothing else in the pipeline should change
         # 2. sample planes and next_planes using multiple threads
         sample = env.sample_planes(states+next_states, preprocess=True)
         # 3. preprocess each item
