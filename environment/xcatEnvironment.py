@@ -76,10 +76,12 @@ class SingleVolumeEnvironment(BaseEnvironment):
             for i in range(config.n_agents):
                 self.logged_rewards.append("oobReward_%d"%(i+1))
             self.rewards["oobReward"] = OutOfBoundaryReward(config.oobReward, self.sx, self.sy, self.sz)
-        # TODO: find a way to integrate the stop reward in a meaningful way
-        # if abs(config.stopReward) > 0:
-        #     self.logged_rewards.append("stopReward")
-        #     self.rewards["stopReward"] = StopReward(config.stopReward)
+        if abs(config.stopReward) > 0:
+            assert "anatomyReward" in self.rewards, "stopReward only implemented when using anatomyReward."
+            assert config.termination == "learned", "stopReward is only meaningful when learning how to stop (action_size = 7, termination = learned)"
+            self.logged_rewards.append("stopReward")
+            self.rewards["stopReward"] = StopReward(config.stopReward,
+                                                    goal_reward = self.rewards["anatomyReward"].get_anatomy_reward(self.sample_plane(self.goal_state)["seg"]))
         if config.penalize_oob_pixels:
             self.logged_rewards.append("oobPixelsReward")
             self.rewards["oobPixelsReward"] = AnatomyReward("0", is_penalty=True)           
@@ -154,12 +156,9 @@ class SingleVolumeEnvironment(BaseEnvironment):
             elif key == "areaReward":
                 # this will contain a single reward for all agents
                 shared_rewards["areaReward"] = func(state)
-            
-            # TODO: find a way to integrate the stop reward in a meaningful way
-            # elif key == "stopReward":
-            #     # this will contain a single reward for all agents, only really applicable when we are using anatomyReward
-            #     shared_rewards["stopReward"] = func(increment, not shared_rewards["anatomyReward"]>0)
-
+            elif key == "stopReward":
+                # this will contain a single reward for all agents, only really applicable when we are using anatomyReward
+                shared_rewards["stopReward"] = func(increment, self.rewards["anatomyReward"].get_anatomy_reward(seg))
             elif key == "oobPixelsReward":
                 # this will contain a single reward for all agents
                 shared_rewards["oobPixelsReward"] = func(seg)

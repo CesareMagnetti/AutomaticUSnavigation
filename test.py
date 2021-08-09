@@ -5,8 +5,43 @@ from options.options import gather_options, print_options
 from visualisation.visualizers import Visualizer
 import torch, os, json
 import numpy as np
+# visualization
 from matplotlib import pyplot as plt
-from matplotlib.offsetbox import OffsetImage, AnnotationBbox
+import matplotlib.lines
+from matplotlib.transforms import Bbox, TransformedBbox
+from matplotlib.legend_handler import HandlerBase
+from matplotlib.image import BboxImage
+
+# handler class to insert images in the legend (gives insights of size of heach heart volume tested)
+class HandlerLineImage(HandlerBase):
+
+    def __init__(self, img_arr, space=15, offset = 10 ):
+        self.space=space
+        self.offset=offset
+        self.image_data = img_arr        
+        super(HandlerLineImage, self).__init__()
+
+    def create_artists(self, legend, orig_handle,
+                       xdescent, ydescent, width, height, fontsize, trans):
+
+        l = matplotlib.lines.Line2D([xdescent+self.offset,xdescent+(width-self.space)/3.+self.offset],
+                                     [ydescent+height/2., ydescent+height/2.])
+        l.update_from(orig_handle)
+        l.set_clip_on(False)
+        l.set_transform(trans)
+
+        bb = Bbox.from_bounds(xdescent +(width+self.space)/3.+self.offset,
+                              ydescent,
+                              height*self.image_data.shape[1]/self.image_data.shape[0],
+                              height)
+
+        tbb = TransformedBbox(bb, trans)
+        image = BboxImage(tbb)
+        image.set_data(self.image_data)
+        image.set_cmap("Greys_r")
+
+        self.update_prop(image, orig_handle, legend)
+        return [l,image]
 
 if __name__ == "__main__":
     # 1. gather options
@@ -26,7 +61,14 @@ if __name__ == "__main__":
     if not os.path.exists(os.path.join(agent.results_dir, "test")):
         os.makedirs(os.path.join(agent.results_dir, "test"))
     # 6. run test experiments on all given environments and generate outputs
-    total_rewards, last_frames = {},{}
+    total_rewards = {}
+    # get the goal plane for each env for comparison in the visualization
+    goal_planes = {env.vol_id: env.sample_plane(env.goal_state)["plane"] for env in envs}
+    for key,value in goal_planes.items():
+        if len(value.shape)>2:
+            goal_planes[key] =  value[0, ...]
+        goal_planes[key] = goal_planes[key]/goal_planes[key].max()
+
     if config.mainReward in ["both", "planeDistanceReward"]:
         total_rewards["planeDistanceReward"] = {}
     if config.mainReward in ["both", "anatomyReward"]:
@@ -40,13 +82,7 @@ if __name__ == "__main__":
                 if key not in total_rewards[reward]:
                     total_rewards[reward][key] = []
                 total_rewards[reward][key].append(logs["logs"][reward])
-            # 6.2. store last frame for visualization later
-            if len(logs["planes"][-1]>2):
-                last_frames[key] = logs["planes"][-1][0, ...].squeeze()
-            else:
-                last_frames[key] = logs["planes"][-1]
-            last_frames[key]/=last_frames[key].max()
-            # 6.3. render trajectories if queried
+            # 6.2. render trajectories if queried
             if config.render:
                 print("rendering logs for: {} ([{}]/[{}])".format(key, i, len(out)))
                 if not os.path.exists(os.path.join(agent.results_dir, "test", key)):
@@ -56,19 +92,28 @@ if __name__ == "__main__":
     
     # 7. re-organize logged rewards
     for reward_key, reward in total_rewards.items():
-        fig = plt.figure()
+        fig = plt.figure(figsize=(15,10))
         ax = plt.gca()
+        lines = {}
+        last_reward = []
         for vol_id, log in reward.items():
             log = np.array(log).astype(np.float)
-            means = log.mean(0)
-            stds = log.std(0)
+            means = log[:,1:].mean(0)
+            stds = log[:,1:].std(0)
+            last_reward.append(means[-1])
             color = next(ax._get_lines.prop_cycler)['color']
-            plt.plot(range(len(means)), means, label=vol_id, c=color)
+            lines[vol_id], = plt.plot(range(len(means)), means, c=color)
             plt.fill_between(range(len(means)), means-stds, means+stds ,alpha=0.3, facecolor=color)
-            ax.figure.figimage(last_frames[vol_id],len(means)-1,means[-1], alpha=0.5)
-            imagebox = OffsetImage(last_frames[vol_id], zoom=0.2)
-            ab = AnnotationBbox(imagebox, ((len(means)-1)/ax.get_xlim()[-1], means[-1]/ax.get_ylim()[-1]))
-        plt.legend()
+
+        # add legend with a reference image to compare heart sizes
+        line_values, line_keys, imgs, last_reward = zip(*sorted(zip(lines.values(), lines.keys(), goal_planes.values(), last_reward), key=lambda t: t[-1], reverse=True))
+        # add legend with vol_ids
+        legend1 = plt.legend(line_values, line_keys, loc="lower center", ncol=len(line_keys))
+        plt.legend(line_values,
+                   [""]*len(lines),
+                   handler_map={line: HandlerLineImage(img) for line,img in zip(line_values,imgs)}, 
+                   handlelength=0.25, fontsize=80, labelspacing=0., bbox_to_anchor=(0.94,1.1), frameon=False)
+        ax.add_artist(legend1)
         plt.title("average {} collected in an episode".format(reward_key))
         # 8. save figure
         if not os.path.exists(os.path.join(agent.results_dir, "test")):

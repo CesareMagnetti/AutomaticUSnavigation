@@ -76,6 +76,8 @@ class SingleVolumeAgent(BaseAgent):
                 if self.config.CT2US:
                     out["planesCT"].append(sample["planeCT"].squeeze())
                 out["states"].append(env.state)
+                ## for cumulative logs uncomment the next line and comment the one after
+                #out["logs"].append({log: r for log,r in env.logs.items()})
                 out["logs"].append({log: r for log,r in env.current_logs.items()})
                 # get action from current state
                 actions = self.act(sample["plane"], local_model)
@@ -83,9 +85,16 @@ class SingleVolumeAgent(BaseAgent):
                 transition, next_sample = env.step(actions, preprocess=True)
                 # set slice to next slice
                 sample = next_sample
-                # if done, end episode early
+                # if done, end episode early and pad logs with terminal state
                 if transition[-1]:
                     out["planes"].extend([sample["plane"].squeeze()]*(steps-step))
+                    out["segs"].extend([sample["seg"].squeeze()]*(steps-step))
+                    if self.config.CT2US:
+                        out["planesCT"].extend([sample["planeCT"].squeeze()]*(steps-step))
+                    out["states"].extend([env.state]*(steps-step))
+                    # # for cumulative logs uncomment the next line and comment the one after
+                    # out["logs"].extend([{log: r for log,r in env.logs.items()}]*(steps-step))
+                    out["logs"].extend([{log: r for log,r in env.current_logs.items()}]*(steps-step))
                     out["terminal_plane"] = sample["plane"].squeeze()
                     break
         # add logs for wandb to out
