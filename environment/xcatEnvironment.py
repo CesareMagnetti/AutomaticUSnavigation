@@ -49,7 +49,7 @@ class SingleVolumeEnvironment(BaseEnvironment):
         self.goal_plane = self.get_plane_coefs(LVcentroid,RVcentroid,LAcentroid)
 
         # monitor oscillations for termination
-        if config.termination == "oscillates":
+        if config.termination == "oscillate":
             self.oscillates = Oscillate(history_length=config.termination_history_len, stop_freq=config.termination_oscillation_freq) 
 
         # initiating empty containers for reward shaping
@@ -249,7 +249,7 @@ class SingleVolumeEnvironment(BaseEnvironment):
             #self.rewards["anatomyReward"].previous_reward = self.rewards["anatomyReward"].get_anatomy_reward(sample["seg"])
             self.rewards["anatomyReward"].previous_reward = 0
         # reset the oscillation monitoring
-        if self.config.termination == "oscillates":
+        if self.config.termination == "oscillate":
             self.oscillates.history.clear()
 
 # ======== LOCATION AWARE ENV ==========
