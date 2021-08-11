@@ -168,6 +168,14 @@ class BaseEnvironment(object):
         a, b, c = cp
         # This evaluates a * x3 + b * y3 + c * z3 which equals d
         d = np.dot(cp, p3)
+
+        # normalize the coeffs (they would still define the same plane)
+        norm = np.sum([abs(a), abs(b), abs(c), abs(d)])
+        a /= norm
+        b /= norm
+        c /= norm
+        d /= norm
+
         return np.array([a, b, c, d])
         
     @staticmethod
