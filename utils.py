@@ -39,7 +39,7 @@ def train(config, local_model, target_model, wandb_entity="us_navigation", sweep
         # 4. instanciate criterion
         criterion = setup_criterion(config)
         # 5. instanciate replay buffer(s) (one per environment)
-        buffers = [PrioritizedReplayBuffer(config.buffer_size, config.batch_size, config.alpha),]*len(envs)
+        buffers = setup_buffers(config, len(envs))
         # 6. instanciate visualizer
         visualizer = Visualizer(agent.results_dir)
 
