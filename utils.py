@@ -96,7 +96,8 @@ def setup_environment(config):
             envs.append(LocationAwareSingleVolumeEnvironment(config, vol_id=vol_id))
         else:
             envs.append(LocationAwareCT2USSingleVolumeEnvironment(config, vol_id=vol_id))
-    
+            
+    # start reward function of each agent based on the input config parsed
     for env in envs:
         env.set_reward()
         
