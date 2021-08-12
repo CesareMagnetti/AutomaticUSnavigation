@@ -1,5 +1,6 @@
 import numpy as np
 from collections import deque
+import pickle
 
 # ========== REPLAY BUFFER CLASS =========
 class ReplayBuffer:
@@ -29,6 +30,12 @@ class ReplayBuffer:
         # reorganize batch
         batch = zip(*experiences)
         return batch
+    
+    def save(self, fname):
+        pickle.dump(self.memory, open('{}_buffer.pkl'.format(fname), 'wb'))
+
+    def load(self, fname):
+        self.memory = pickle.load(open('{}_buffer.pkl'.format(fname), 'rb'))
 
     def __len__(self):
         """Return the current size of internal memory."""
@@ -67,3 +74,11 @@ class PrioritizedReplayBuffer(ReplayBuffer):
     def update_priorities(self, batch_indices, batch_priorities, eps=10e-5):
         for idx, prio in zip(batch_indices, batch_priorities):
             self.priorities[idx] = prio + eps
+    
+    def save(self, fname):
+        pickle.dump(self.memory, open('{}_buffer.pkl'.format(fname), 'wb'))
+        pickle.dump(self.priorities, open('{}_priorities.pkl'.format(fname), 'wb'))
+    
+    def load(self, fname):
+        self.memory = pickle.load(open('{}_buffer.pkl'.format(fname), 'rb'))
+        self.priorities = pickle.load(open('{}_priorities.pkl'.format(fname), 'rb'))

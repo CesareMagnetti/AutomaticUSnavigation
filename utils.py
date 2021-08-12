@@ -67,9 +67,13 @@ def train(config, local_model, target_model, wandb_entity="us_navigation", sweep
                 # save agent locally and test its current greedy policy
                 if episode % max(1, int(config.save_freq/len(envs))) == 0:
                         if not sweep:
-                                print("saving latest model weights...")
+                                print("saving latest model weights and buffer...")
                                 local_model.save(os.path.join(agent.checkpoints_dir, "latest.pth"))
                                 target_model.save(os.path.join(agent.checkpoints_dir, "episode%d.pth"%episode))
+                                for i, buffer in enumerate(buffers):
+                                    buffer.save(os.path.join(config.checkpoints_dir, config.name, "latest", "_{}_".format(i)))
+                                    buffer.save(os.path.join(config.checkpoints_dir, config.name, "episode%d"%episode, "_{}_".format(i)))
+
                         # test the greedy policy on a random environment and send logs to wandb
                         out = agent.test_agent(config.n_steps_per_episode, [envs[np.random.randint(agent.n_envs)]], local_model)
                         for key, log in out.items():
@@ -102,6 +106,15 @@ def setup_environment(config):
         env.set_reward()
         
     return envs
+
+def setup_buffers(config, N):
+    # instanciate buffers
+    buffers = [PrioritizedReplayBuffer(config.buffer_size, config.batch_size, config.alpha),]*N
+    # load buffers if needed
+    if config.load is not None:
+        for i, buffer in enumerate(buffers):
+            buffer.load(os.path.join(config.checkpoints_dir, config.name, config.load, "_{}_".format(i)))
+    return buffers
 
 def setup_criterion(config):
     if "mse" in config.loss.lower():
