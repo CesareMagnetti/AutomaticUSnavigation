@@ -41,12 +41,13 @@ class SingleVolumeEnvironment(BaseEnvironment):
         self.Segmentation = Segmentation
 
         # get an approximated location for the 4-chamber slice using the centroids
-        LVcentroid = get_centroid(Segmentation, 2885)
-        RVcentroid = get_centroid(Segmentation, 2897)
-        LAcentroid = get_centroid(Segmentation, 2893)
-        self.goal_state = np.vstack([LVcentroid, RVcentroid, LAcentroid])
+        self.centroids = config.goal_centroids.split(",")
+        centroid1 = get_centroid(Segmentation, self.centroids[0])
+        centroid2 = get_centroid(Segmentation, self.centroids[1])
+        centroid3 = get_centroid(Segmentation, self.centroids[2])
+        self.goal_state = np.vstack([centroid1, centroid2, centroid3])
         # get the corresponding plane coefficients
-        self.goal_plane = self.get_plane_coefs(LVcentroid,RVcentroid,LAcentroid)
+        self.goal_plane = self.get_plane_coefs(centroid1, centroid2, centroid3)
 
         # monitor oscillations for termination
         if config.termination == "oscillate":
