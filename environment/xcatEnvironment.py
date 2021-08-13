@@ -41,7 +41,7 @@ class SingleVolumeEnvironment(BaseEnvironment):
         self.Segmentation = Segmentation
 
         # get an approximated location for the 4-chamber slice using the centroids
-        self.centroids = config.goal_centroids.split(",")
+        self.centroids = [int(i) for i in config.goal_centroids.split(",")]
         centroid1 = get_centroid(Segmentation, self.centroids[0])
         centroid2 = get_centroid(Segmentation, self.centroids[1])
         centroid3 = get_centroid(Segmentation, self.centroids[2])
