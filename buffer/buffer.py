@@ -71,7 +71,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         weights = ((N*probs[indices])**(-beta))/max_weight
         return batch, weights, indices
     
-    def update_priorities(self, batch_indices, batch_priorities, eps=10e-5):
+    def update_priorities(self, batch_indices, batch_priorities, eps=10e-4):
         for idx, prio in zip(batch_indices, batch_priorities):
             self.priorities[idx] = prio + eps
     

@@ -49,7 +49,7 @@ class PrioritizedDeepQLearning():
         # 4. evalauate TD error as a fit function for the netwrok
         loss = criterion(Qa, Qhat)*weights
         # 5. deltas to update priorities
-        deltas = torch.abs(Qa-Qhat)+1e-5
+        deltas = torch.abs(Qa-Qhat)
         return (loss.mean(), deltas)
 
 class PrioritizedDoubleDeepQLearning():
@@ -103,5 +103,5 @@ class PrioritizedDoubleDeepQLearning():
         # 4. evalauate TD error as a fit function for the network
         loss = criterion(Qa, Qhat)*weights
         # 5. deltas to update priorities
-        deltas = torch.abs(Qa-Qhat)+1e-5
+        deltas = torch.abs(Qa-Qhat)
         return (loss.mean(), deltas)
