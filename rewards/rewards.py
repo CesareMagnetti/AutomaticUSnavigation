@@ -46,11 +46,12 @@ class AnatomyReward(object):
     in the slice sampled by the current state to this end we have segmentations of the volume and reward_id corresponds
     to the value of the anatomical tissue of interest in the segmentation (i.e. the ID of the left ventricle is 2885).
     """
-    def __init__(self, rewardIDs, is_penalty=False, incremental=False):
+    def __init__(self, rewardIDs, is_penalty=False, incremental=False, weight=1):
         # if more IDs are passed store in an array
         self.IDs = [int(ID) for ID in rewardIDs.split(",")]
         self.is_penalty = is_penalty
         self.incremental = incremental
+        self.weight = weight
         if incremental:
             self.previous_reward = None
 
@@ -77,7 +78,7 @@ class AnatomyReward(object):
             current_reward = self.get_anatomy_reward(seg)
             reward = np.sign(current_reward - self.previous_reward)
             self.previous_reward = current_reward
-            return reward
+            return self.weight*reward # scale by weight
 
 class SteppingReward(object):
     """Class to assign the default reward received upon making a step. we give a small penalty for each step in which the above ID

@@ -13,5 +13,5 @@ if __name__=="__main__":
         # 2. instanciate Qnetworks
         qnetwork_local, qnetwork_target = setup_networks(config)
         # 3. launch training
-        train(config, qnetwork_local, qnetwork_target, sweep=False)
+        train(config, qnetwork_local, qnetwork_target, name=config.name, sweep=False)
 

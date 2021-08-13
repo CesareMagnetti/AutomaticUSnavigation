@@ -12,7 +12,7 @@ from buffer.buffer import *
 from visualisation.visualizers import Visualizer
 
 # ==== THE FOLLOWING FUNCTIONS HANDLE TRAINING AND TESTING OF THE AGENTs ====
-def train(config, local_model, target_model, wandb_entity="us_navigation", sweep=False, rank=0):
+def train(config, local_model, target_model, name, wandb_entity="us_navigation", sweep=False, rank=0):
         """ Trains an agent on an input environment, given networks/optimizers and training criterions.
         Params:
         ==========
@@ -21,6 +21,7 @@ def train(config, local_model, target_model, wandb_entity="us_navigation", sweep
                                              (if more processes, the Qnetwork is shared)
                 target_model (PyTorch model): pytorch network that will be used as a target to estimate future Qvalues. 
                                               (it is a hard copy or a running average of the local model, helps against diverging)
+                name (str): experiments name
                 wandb_entuty (str): which wandb workspace to save logs to. (if unsure use your main workspace i.e. your-user-name)
                 sweep (bool): flag if we are performing a sweep, in which case we will not be saving checkpoints as that will occupy too much memory.
                               However we will still save the final model in .onnx format (only intermediate .pth checkpoints are not saved)

@@ -41,13 +41,7 @@ class SingleVolumeEnvironment(BaseEnvironment):
         self.Segmentation = Segmentation
 
         # get an approximated location for the 4-chamber slice using the centroids
-        self.centroids = [int(i) for i in config.goal_centroids.split(",")]
-        centroid1 = get_centroid(Segmentation, self.centroids[0])
-        centroid2 = get_centroid(Segmentation, self.centroids[1])
-        centroid3 = get_centroid(Segmentation, self.centroids[2])
-        self.goal_state = np.vstack([centroid1, centroid2, centroid3])
-        # get the corresponding plane coefficients
-        self.goal_plane = self.get_plane_coefs(centroid1, centroid2, centroid3)
+        self.set_goal([int(i) for i in config.goal_centroids.split(",")])
 
         # monitor oscillations for termination
         if config.termination == "oscillate":
@@ -59,6 +53,18 @@ class SingleVolumeEnvironment(BaseEnvironment):
         # get starting configuration and reset environment for a new episode
         self.reset()
 
+    def set_goal(self, centroid_ids):
+        # set the current centroids ids
+        self.centroid_ids = centroid_ids
+        # get the centroids coordinates
+        centroid1 = get_centroid(self.Segmentation, centroid_ids[0])
+        centroid2 = get_centroid(self.Segmentation, centroid_ids[1])
+        centroid3 = get_centroid(self.Segmentation, centroid_ids[2])
+        # set goal state
+        self.goal_state = np.vstack([centroid1, centroid2, centroid3])
+        # set the corresponding plane coefficients
+        self.goal_plane = self.get_plane_coefs(centroid1, centroid2, centroid3)  
+
     def set_reward(self):
         # setup the reward function handling:
         if self.config.mainReward == "planeDistanceReward":
@@ -66,12 +72,12 @@ class SingleVolumeEnvironment(BaseEnvironment):
             self.rewards["planeDistanceReward"] = PlaneDistanceReward(self.goal_plane)
         elif self.config.mainReward == "anatomyReward":
             self.logged_rewards.append("anatomyReward")
-            self.rewards["anatomyReward"] = AnatomyReward(self.config.anatomyRewardIDs, incremental=self.config.incrementalAnatomyReward)
+            self.rewards["anatomyReward"] = AnatomyReward(self.config.anatomyRewardIDs, incremental=self.config.incrementalAnatomyReward, weight=self.config.anatomyRewardWeight)
         elif self.config.mainReward == "both":
             self.logged_rewards.append("planeDistanceReward")
             self.rewards["planeDistanceReward"] = PlaneDistanceReward(self.goal_plane)
             self.logged_rewards.append("anatomyReward")
-            self.rewards["anatomyReward"] = AnatomyReward(self.config.anatomyRewardIDs, incremental=self.config.incrementalAnatomyReward)
+            self.rewards["anatomyReward"] = AnatomyReward(self.config.anatomyRewardIDs, incremental=self.config.incrementalAnatomyReward, weight=self.config.anatomyRewardWeight)
         else:
             raise ValueError('unknown ``mainReward`` parameter. options: <planeDistanceReward,anatomyReward,both> got: {}'.format(self.config.mainReward))
         # # stepping reward not that effective when considering incremental rewards 
