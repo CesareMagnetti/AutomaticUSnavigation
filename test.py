@@ -68,10 +68,8 @@ if __name__ == "__main__":
         if len(value.shape)>2:
             goal_planes[key] =  value[0, ...]
         goal_planes[key] = goal_planes[key]/goal_planes[key].max()
-
-    if config.mainReward in ["both", "planeDistanceReward"]:
-        total_rewards["planeDistanceReward"] = {}
-    if config.mainReward in ["both", "anatomyReward"]:
+    total_rewards["planeDistanceReward"] = {}
+    if config.anatomyRewardWeight > 0:
         total_rewards["anatomyReward"] = {}
     for run in range(max(int(config.n_runs/len(envs)), 1)):
         print("test run: [{}]/[{}]".format(run+1, int(config.n_runs/len(envs))))

@@ -67,31 +67,24 @@ class SingleVolumeEnvironment(BaseEnvironment):
 
     def set_reward(self):
         # setup the reward function handling:
-        if self.config.mainReward == "planeDistanceReward":
-            self.logged_rewards.append("planeDistanceReward")
-            self.rewards["planeDistanceReward"] = PlaneDistanceReward(self.goal_plane)
-        elif self.config.mainReward == "anatomyReward":
+        self.logged_rewards.append("planeDistanceReward")
+        self.rewards["planeDistanceReward"] = PlaneDistanceReward(self.goal_plane)
+        # add anatomy reward
+        if self.config.anatomyRewardWeight > 0:
             self.logged_rewards.append("anatomyReward")
-            self.rewards["anatomyReward"] = AnatomyReward(self.config.anatomyRewardIDs, incremental=self.config.incrementalAnatomyReward, weight=self.config.anatomyRewardWeight)
-        elif self.config.mainReward == "both":
-            self.logged_rewards.append("planeDistanceReward")
-            self.rewards["planeDistanceReward"] = PlaneDistanceReward(self.goal_plane)
-            self.logged_rewards.append("anatomyReward")
-            self.rewards["anatomyReward"] = AnatomyReward(self.config.anatomyRewardIDs, incremental=self.config.incrementalAnatomyReward, weight=self.config.anatomyRewardWeight)
-        else:
-            raise ValueError('unknown ``mainReward`` parameter. options: <planeDistanceReward,anatomyReward,both> got: {}'.format(self.config.mainReward))
-        # # stepping reward not that effective when considering incremental rewards 
-        # #(the agent would already receive a penalty for stepping if it worsens the view) 
-        # if abs(config.steppingReward) > 0:
-        #     self.logged_rewards.append("steppingReward")
-        #     self.rewards["steppingReward"] = SteppingReward(config.steppingReward)
+            self.rewards["anatomyReward"] = AnatomyReward(self.config.anatomyRewardIDs,
+                                                          incremental=self.config.incrementalAnatomyReward,
+                                                          weight=self.config.anatomyRewardWeight)
+        # add area reward
         if abs(self.config.areaRewardWeight) > 0:
             self.logged_rewards.append("areaReward")
             self.rewards["areaReward"] = AreaReward(self.config.areaRewardWeight, self.sx*self.sy)
+        # add oob reward
         if abs(self.config.oobReward) > 0:
             for i in range(self.config.n_agents):
                 self.logged_rewards.append("oobReward_%d"%(i+1))
             self.rewards["oobReward"] = OutOfBoundaryReward(self.config.oobReward, self.sx, self.sy, self.sz)
+        # add stop reward
         if abs(self.config.stopReward) > 0:
             assert "anatomyReward" in self.rewards, "stopReward only implemented when using anatomyReward."
             assert self.config.termination == "learned", "stopReward is only meaningful when learning how to stop (action_size = 7, termination = learned)"
@@ -99,6 +92,7 @@ class SingleVolumeEnvironment(BaseEnvironment):
             self.rewards["stopReward"] = StopReward(self.config.stopReward,
                                                     goal_reward = self.rewards["anatomyReward"].get_anatomy_reward(self.sample_plane(self.goal_state,
                                                                                                                                      return_seg=True)["seg"]))
+        # add oob pixels reward
         if self.config.penalize_oob_pixels:
             self.logged_rewards.append("oobPixelsReward")
             self.rewards["oobPixelsReward"] = AnatomyReward("0", is_penalty=True)

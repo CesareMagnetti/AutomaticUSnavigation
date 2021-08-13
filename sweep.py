@@ -10,11 +10,11 @@ if __name__=="__main__":
         # 1. gather options
         parser = gather_options(phase="train")
         config = parser.parse_args()
+        config.name = "anatomy_{}_area_{}_oob_{}".format(config.anatomyRewardWeight, config.areaRewardWeight, config.oobReward)
         config.use_cuda = torch.cuda.is_available()
         config.device = torch.device("cuda:{}".format(config.gpu_device) if config.use_cuda else "cpu")
         print_options(config, parser)
         # 2. instanciate Qnetworks
         qnetwork_local, qnetwork_target = setup_networks(config)
         # 3. launch training
-        name = "anatomy_{}_area_{}_oob_{}".format(config.anatomyRewardWeight, config.areaRewardWeight, config.oobReward)
-        train(config, qnetwork_local, qnetwork_target, name=name, sweep=True)
+        train(config, qnetwork_local, qnetwork_target, name=config.name, sweep=True)
