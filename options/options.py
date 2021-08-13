@@ -51,7 +51,7 @@ def gather_options(phase="train"):
     parser.add_argument('--mainReward', type=str, default="planeDistanceReward", help="main reward signal, either based on anatomical content of interest, distance from goal plane or both. see rewards/rewards.py for more info.")
     parser.add_argument('--anatomyRewardIDs', type=str, default="2885,2897,2893", help="segmentation IDs for the anatomical reward, see rewards/rewards.py for more info.\n"\
                                                                              "(default: LV+RV+LA: 2885,2897,2893). if multiple IDs separate by comma.")
-    parser.add_argument('--incrementalAnatomyReward', action='store_true', help="whether the agent is rewarded on the improvement of anatomical content or on the current anatomical content.")
+    parser.add_argument('--incrementalAnatomyReward', action='store_true', default=True, help="whether the agent is rewarded on the improvement of anatomical content or on the current anatomical content.")
     parser.add_argument('--anatomyRewardWeight', type=float, default=1., help='relative weight of the anatomy reward if present, see rewards/rewards.py for more info.\n')
     parser.add_argument('--oobReward', type=float, default=0.01, help='penalize each agent if it steps outside the boundaries of the volume, see rewards/rewards.py for more info.')
     parser.add_argument('--areaRewardWeight', type=float, default=0.01, help='reward the agents if they stay far apart from each other (measuring area of spanned triangle), see rewards/rewards.py for more info.\n'\
