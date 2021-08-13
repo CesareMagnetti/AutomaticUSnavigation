@@ -31,7 +31,7 @@ def setup_networks(config):
     print("Qnetwork instanciated: {} params.\n".format(qnetwork_local.count_parameters()), qnetwork_local)
     # 2. load from checkpoint if needed
     if config.load is not None:
-        print("loading: {} ...".format(config.load))
+        print("loading: {} model ...".format(config.load))
         qnetwork_local.load(os.path.join(config.checkpoints_dir, config.name, config.load+".pth"))
         qnetwork_target.load(os.path.join(config.checkpoints_dir, config.name, config.load+".pth"))
     return qnetwork_local, qnetwork_target

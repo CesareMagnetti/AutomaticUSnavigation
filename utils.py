@@ -65,14 +65,14 @@ def train(config, local_model, target_model, wandb_entity="us_navigation", sweep
                 if episode % max(1, int(config.log_freq/len(envs))) == 0:
                         wandb.log(logs, commit=True)
                 # save agent locally and test its current greedy policy
-                if episode % max(1, int(config.save_freq/len(envs))) == 0:
+                if episode % max(1, int(config.save_freq)) == 0:
                         if not sweep:
-                                print("saving latest model weights and buffer...")
-                                local_model.save(os.path.join(agent.checkpoints_dir, "latest.pth"))
-                                target_model.save(os.path.join(agent.checkpoints_dir, "episode%d.pth"%episode))
-                                for i, buffer in enumerate(buffers):
-                                    buffer.save(os.path.join(config.checkpoints_dir, config.name, "latest", "_{}_".format(i)))
-                                    buffer.save(os.path.join(config.checkpoints_dir, config.name, "episode%d"%episode, "_{}_".format(i)))
+                            print("saving latest model weights and buffer...")
+                            local_model.save(os.path.join(agent.checkpoints_dir, "latest.pth"))
+                            target_model.save(os.path.join(agent.checkpoints_dir, "episode%d.pth"%episode))
+                            for i, buffer in enumerate(buffers):
+                                buffer.save(os.path.join(config.checkpoints_dir, config.name, "latest_{}_".format(i)))
+                                buffer.save(os.path.join(config.checkpoints_dir, config.name, "episode{}_{}_".format(episode, i)))
 
                         # test the greedy policy on a random environment and send logs to wandb
                         out = agent.test_agent(config.n_steps_per_episode, [envs[np.random.randint(agent.n_envs)]], local_model)
@@ -112,8 +112,9 @@ def setup_buffers(config, N):
     buffers = [PrioritizedReplayBuffer(config.buffer_size, config.batch_size, config.alpha),]*N
     # load buffers if needed
     if config.load is not None:
+        print("loading {} buffers ...".format(config.load))
         for i, buffer in enumerate(buffers):
-            buffer.load(os.path.join(config.checkpoints_dir, config.name, config.load, "_{}_".format(i)))
+            buffer.load(os.path.join(config.checkpoints_dir, config.name, "{}_{}_".format(config.load, i)))
     return buffers
 
 def setup_criterion(config):
