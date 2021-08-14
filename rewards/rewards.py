@@ -9,20 +9,21 @@ class PlaneDistanceReward(object):
         self.goal = goal
         self.previous_plane = None
     
+    def get_distance_from_goal(self, coefs):
+        return ((coefs-self.goal)**2).sum()
+
     def __call__(self, coefs):
         # if previous plane is none (first step) set it equal to the current step -> reward of zero at the beginning
         if self.previous_plane is None:
             raise ValueError('self.previous_plane not defined. Overwrite it as ``instance.previous_plane = self.get_plane_coefs(pointA, pointB, pointC)``')
         # calculate euclidean distance between current plane and the goal
-        D1 = ((coefs-self.goal)**2).sum()
+        D1 = self.get_distance_from_goal(coefs)
         # calculate distance between previous plane and goal
-        D2 = ((self.previous_plane-self.goal)**2).sum()
+        D2 = self.get_distance_from_goal(self.previous_plane)
         # store plane as the new previous plane
         self.previous_plane = np.array(coefs)
         # return sign function of distance improvement (D1 should be smaller than D2 if we are getting closer -> +1 if closer, -1 if further, 0 if same distance)
         return np.sign(D2-D1)
-        # return distance improvement (D1 should be smaller than D2 if we are getting closer)
-        #return D2-D1
 
 class Oscillate(object):
     def __init__(self, history_length, stop_freq):

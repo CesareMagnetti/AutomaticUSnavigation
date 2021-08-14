@@ -36,7 +36,7 @@ def train(config, local_model, target_model, name, wandb_entity="us_navigation",
         # 2. instanciate agent
         agent = MultiVolumeAgent(config)
         # 3. instanciate optimizer for local_network
-        optimizer = optim.Adam(local_model.parameters(), lr=config.learning_rate)
+        optimizer = setup_optimizer(config, local_model)
         # 4. instanciate criterion
         criterion = setup_criterion(config)
         # 5. instanciate replay buffer(s) (one per environment)
@@ -68,16 +68,18 @@ def train(config, local_model, target_model, name, wandb_entity="us_navigation",
                 # save agent locally and test its current greedy policy
                 if episode % max(1, int(config.save_freq)) == 0:
                         if not sweep:
-                            print("saving latest model weights and buffer...")
+                            print("saving latest model, optimizer and buffer...")
                             local_model.save(os.path.join(agent.checkpoints_dir, "latest.pth"))
-                            target_model.save(os.path.join(agent.checkpoints_dir, "episode%d.pth"%episode))
+                            local_model.save(os.path.join(agent.checkpoints_dir, "episode%d.pth"%episode))
+                            torch.save(optimizer.state_dict(), os.path.join(agent.checkpoints_dir, "latest_optimizer.pth"))
+                            torch.save(optimizer.state_dict(), os.path.join(agent.checkpoints_dir, "episode%d_optimizer.pth"%episode))
                             for i, buffer in enumerate(buffers):
                                 buffer.save(os.path.join(config.checkpoints_dir, config.name, "latest_{}_".format(i)))
                                 buffer.save(os.path.join(config.checkpoints_dir, config.name, "episode{}_{}_".format(episode, i)))
 
                         # test the greedy policy on a random environment and send logs to wandb
                         out = agent.test_agent(config.n_steps_per_episode, [envs[np.random.randint(agent.n_envs)]], local_model)
-                        for key, log in out.items():
+                        for _, log in out.items():
                             wandb.log(log["wandb"], commit=True)
                             # animate the trajectory followed by the agent in the current episode
                             visualizer.render_frames(log["planes"], n_rows = 2 if agent.config.location_aware else 1, fname = "episode%d.gif"%episode)
@@ -100,13 +102,24 @@ def setup_environment(config):
         elif config.location_aware and not config.CT2US:
             envs.append(LocationAwareSingleVolumeEnvironment(config, vol_id=vol_id))
         else:
-            envs.append(LocationAwareCT2USSingleVolumeEnvironment(config, vol_id=vol_id))
-            
+            envs.append(LocationAwareCT2USSingleVolumeEnvironment(config, vol_id=vol_id))        
     # start reward function of each agent based on the input config parsed
     for env in envs:
-        env.set_reward()
-        
+        env.set_reward()     
     return envs
+
+def setup_optimizer(config, local_model):
+    optimizer = optim.Adam(local_model.parameters(), lr=config.learning_rate)
+    # load optimizer if needed
+    if config.load is not None:
+        if config.load_name is not None:
+            load_name = config.load_name
+        else:
+            load_name = config.name
+        print("loading {}/{} optimizer ...".format(load_name, config.load))
+        state_dict = torch.load(os.path.join(config.checkpoints_dir, load_name, config.load+"_optimizer.pth"), map_location='cpu')
+        optimizer.load_state_dict(state_dict)
+    return optimizer
 
 def setup_buffers(config, N):
     # instanciate buffers
