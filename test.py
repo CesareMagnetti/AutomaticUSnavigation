@@ -63,7 +63,7 @@ if __name__ == "__main__":
 
 
     # 6. run test experiments on all given environments and generate outputs
-    total_rewards = {"planeDistanceReward": [], "anatomyReward": []}
+    total_rewards = {"planeDistanceReward": {}, "anatomyReward": {}}
     goal_planes = {env.vol_id: env.sample_plane(env.goal_state)["plane"] for env in envs}
     for key,value in goal_planes.items():
         if len(value.shape)>2:
@@ -82,8 +82,8 @@ if __name__ == "__main__":
                     total_rewards[reward][key] = []
                 total_rewards[reward][key].append(logs["logs"][reward])
             # 6.2. gather terminal states and planes reached
-            terminal_states[key].append(logs["terminal_state"])
-            terminal_planes[key].append(logs["terminal_plane"])
+            terminal_states[key].append(logs["states"][-1])
+            terminal_planes[key].append(logs["planes"][-1])
             # 6.3. render trajectories if queried
             if config.render:
                 print("rendering logs for: {} ([{}]/[{}])".format(key, i, len(out)))
@@ -92,34 +92,58 @@ if __name__ == "__main__":
                 visualizer.render_full(logs, fname = os.path.join(agent.results_dir, "test", key, "{}_{}.gif".format(config.fname, run)))
                 #visualizer.render_frames(logs["planes"], logs["planes"], fname="trajectory.gif", n_rows=2, fps=10)
     
+
+    # 7. print quantitative metrics for this model
+    anatomy_rewards = {"mean": np.stack([np.array(total_rewards["anatomyReward"][key]).sum(-1).mean(-1) for key in goal_planes]),
+                       "std": np.stack([np.array(total_rewards["anatomyReward"][key]).sum(-1).std(-1) for key in goal_planes])}
+    planeDistance_rewards = {"mean": np.stack([np.array(total_rewards["planeDistanceReward"][key]).sum(-1).mean(-1) for key in goal_planes]),
+                                   "std":np.stack([np.array(total_rewards["planeDistanceReward"][key]).sum(-1).std(-1) for key in goal_planes])}
+    plane_distances_from_goal_plane = {"mean": [], "std": []}
+    for env in envs:
+        distancesGoal = [env.rewards["planeDistanceReward"].get_distance_from_goal(env.get_plane_coefs(*terminal_states[env.vol_id][i])) for i in range(len(terminal_states[env.vol_id]))]
+        plane_distances_from_goal_plane["mean"].append(np.mean(distancesGoal))
+        plane_distances_from_goal_plane["std"].append(np.std(distancesGoal))
     
+    
+    print("anatomy_rewards\n")
+    print("means: ", anatomy_rewards["mean"])
+    print("stds: ", anatomy_rewards["std"])
 
-    # 7. re-organize logged rewards
-    for reward_key, reward in total_rewards.items():
-        fig = plt.figure(figsize=(15,10))
-        ax = plt.gca()
-        lines = {}
-        last_reward = []
-        for vol_id, log in reward.items():
-            log = np.array(log).astype(np.float)
-            means = log[:,1:].mean(0)
-            stds = log[:,1:].std(0)
-            last_reward.append(means[-1])
-            color = next(ax._get_lines.prop_cycler)['color']
-            lines[vol_id], = plt.plot(range(len(means)), means, c=color)
-            plt.fill_between(range(len(means)), means-stds, means+stds ,alpha=0.3, facecolor=color)
+    print("planeDistance_rewards\n")
+    print("means: ", planeDistance_rewards["mean"])
+    print("stds: ", planeDistance_rewards["std"])
 
-        # add legend with a reference image to compare heart sizes
-        line_values, line_keys, imgs, last_reward = zip(*sorted(zip(lines.values(), lines.keys(), goal_planes.values(), last_reward), key=lambda t: t[-1], reverse=True))
-        # add legend with vol_ids
-        legend1 = plt.legend(line_values, line_keys, loc="lower center", ncol=len(line_keys))
-        plt.legend(line_values,
-                   [""]*len(lines),
-                   handler_map={line: HandlerLineImage(img) for line,img in zip(line_values,imgs)}, 
-                   handlelength=0.25, fontsize=80, labelspacing=0., bbox_to_anchor=(0.94,1.1), frameon=False)
-        ax.add_artist(legend1)
-        plt.title("average {} collected in an episode".format(reward_key))
-        # 8. save figure
-        if not os.path.exists(os.path.join(agent.results_dir, "test")):
-            os.makedirs(os.path.join(agent.results_dir, "test"))
-        plt.savefig(os.path.join(agent.results_dir, "test", "{}_test.pdf".format(reward_key)))
+    print("plane_distances_from_goal_plane\n")
+    print("means: ", plane_distances_from_goal_plane["mean"])
+    print("stds: ", plane_distances_from_goal_plane["std"])
+
+        
+    # # 7. re-organize logged rewards
+    # for reward_key, reward in total_rewards.items():
+    #     fig = plt.figure(figsize=(15,10))
+    #     ax = plt.gca()
+    #     lines = {}
+    #     last_reward = []
+    #     for vol_id, log in reward.items():
+    #         log = np.array(log).astype(np.float)
+    #         means = log[:,1:].mean(0)
+    #         stds = log[:,1:].std(0)
+    #         last_reward.append(means[-1])
+    #         color = next(ax._get_lines.prop_cycler)['color']
+    #         lines[vol_id], = plt.plot(range(len(means)), means, c=color)
+    #         plt.fill_between(range(len(means)), means-stds, means+stds ,alpha=0.3, facecolor=color)
+
+    #     # add legend with a reference image to compare heart sizes
+    #     line_values, line_keys, imgs, last_reward = zip(*sorted(zip(lines.values(), lines.keys(), goal_planes.values(), last_reward), key=lambda t: t[-1], reverse=True))
+    #     # add legend with vol_ids
+    #     legend1 = plt.legend(line_values, line_keys, loc="lower center", ncol=len(line_keys))
+    #     plt.legend(line_values,
+    #                [""]*len(lines),
+    #                handler_map={line: HandlerLineImage(img) for line,img in zip(line_values,imgs)}, 
+    #                handlelength=0.25, fontsize=80, labelspacing=0., bbox_to_anchor=(0.94,1.1), frameon=False)
+    #     ax.add_artist(legend1)
+    #     plt.title("average {} collected in an episode".format(reward_key))
+    #     # 8. save figure
+    #     if not os.path.exists(os.path.join(agent.results_dir, "test")):
+    #         os.makedirs(os.path.join(agent.results_dir, "test"))
+    #     plt.savefig(os.path.join(agent.results_dir, "test", "{}_test.pdf".format(reward_key)))

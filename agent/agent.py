@@ -94,8 +94,6 @@ class SingleVolumeAgent(BaseAgent):
                     # # for cumulative logs uncomment the next line and comment the one after
                     # out["logs"].extend([{log: r for log,r in env.logs.items()}]*(steps-step))
                     out["logs"].extend([{log: r for log,r in env.current_logs.items()}]*(steps-step))
-                    out["terminal_plane"] = sample["plane"].squeeze()
-                    out["terminal_state"] = env.state
                     break
         # add logs for wandb to out
         out["wandb"] = {log+"_test": r for log,r in env.logs.items()}
