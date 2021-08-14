@@ -5,8 +5,9 @@ class PlaneDistanceReward(object):
     """Class to assign a reward based on the plane distance between the plane defined by the current state and the goal plane
     defined using the centroids of the heart chambers.
     """
-    def __init__(self, goal):
+    def __init__(self, goal, weight=1):
         self.goal = goal
+        self.weight = weight
         self.previous_plane = None
     
     def get_distance_from_goal(self, coefs):
@@ -23,7 +24,7 @@ class PlaneDistanceReward(object):
         # store plane as the new previous plane
         self.previous_plane = np.array(coefs)
         # return sign function of distance improvement (D1 should be smaller than D2 if we are getting closer -> +1 if closer, -1 if further, 0 if same distance)
-        return np.sign(D2-D1)
+        return self.weight*np.sign(D2-D1) # scale by weight
 
 class Oscillate(object):
     def __init__(self, history_length, stop_freq):

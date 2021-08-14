@@ -66,9 +66,10 @@ class SingleVolumeEnvironment(BaseEnvironment):
         self.goal_plane = self.get_plane_coefs(centroid1, centroid2, centroid3)  
 
     def set_reward(self):
-        # setup the reward function handling:
-        self.logged_rewards.append("planeDistanceReward")
-        self.rewards["planeDistanceReward"] = PlaneDistanceReward(self.goal_plane)
+        # add plane distance reward
+        if self.config.planeDistanceRewardWeight > 0:
+            self.logged_rewards.append("planeDistanceReward")
+            self.rewards["planeDistanceReward"] = PlaneDistanceReward(self.goal_plane, weight=self.config.planeDistanceRewardWeight)
         # add anatomy reward
         if self.config.anatomyRewardWeight > 0:
             self.logged_rewards.append("anatomyReward")
