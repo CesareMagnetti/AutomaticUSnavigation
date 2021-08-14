@@ -113,9 +113,13 @@ def setup_buffers(config, N):
     buffers = [PrioritizedReplayBuffer(config.buffer_size, config.batch_size, config.alpha),]*N
     # load buffers if needed
     if config.load is not None:
-        print("loading {} buffers ...".format(config.load))
+        if config.load_name is not None:
+            load_name = config.load_name
+        else:
+            load_name = config.name
+        print("loading {}/{} buffers ...".format(load_name, config.load))
         for i, buffer in enumerate(buffers):
-            buffer.load(os.path.join(config.checkpoints_dir, config.name, "{}_{}_".format(config.load, i)))
+            buffer.load(os.path.join(config.checkpoints_dir, load_name, "{}_{}_".format(config.load, i)))
     return buffers
 
 def setup_criterion(config):

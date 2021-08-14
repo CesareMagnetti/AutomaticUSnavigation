@@ -15,6 +15,8 @@ def gather_options(phase="train"):
     parser.add_argument('--results_dir', type=str, default='./results/', help='where to save the trajectory.')
     parser.add_argument('--checkpoints_dir', type=str, default='./checkpoints/', help='where to save the trajectory.')
     parser.add_argument('--load', type=str, default=None, help='which model to load from.')
+    parser.add_argument('--load_name', type=str, default=None, help='which experiment to load model from.')
+
     # logs and checkpointing 
     parser.add_argument('--wandb', type=str, default='online', help='handles weights and biases interface.\n'\
                                                                 'online: launches online interface.\n'\
