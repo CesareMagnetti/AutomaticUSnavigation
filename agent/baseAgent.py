@@ -1,4 +1,3 @@
-
 import torch, os, six, random
 import numpy as np
 from abc import abstractmethod, ABCMeta
@@ -34,12 +33,12 @@ class BaseAgent(object):
         # starting epsilon value for exploration/exploitation trade off
         self.eps = config.eps_start
         # formulate a suitable decay factor for epsilon given the queried options.
-        self.EPS_DECAY_FACTOR = (config.eps_end/config.eps_start)**(1/int(config.stop_decay*config.n_episodes))
+        self.EPS_DECAY_FACTOR = (config.eps_end/config.eps_start)**(1/(int(config.stop_decay*config.n_episodes)-config.starting_episode))
         # starting beta value for bias correction in prioritized experience replay
         self.beta = config.beta_start
         # formulate a suitable decay factor for beta given the queried options. (since beta_end>beta_start, this will actually be an increase factor)
         # annealiate beta to 1 (or beta_end) as we go further in the episode (original P.E.R paper reccommends this)
-        self.BETA_DECAY_FACTOR = (config.beta_end/config.beta_start)**(1/int(config.stop_decay*config.n_episodes))
+        self.BETA_DECAY_FACTOR = (config.beta_end/config.beta_start)**(1/(int(config.stop_decay*config.n_episodes)-config.starting_episode))
         # set the trainer algorithm
         if config.trainer.lower() in ["deepqlearning", "qlearning", "dqn"]:
             self.trainer = PrioritizedDeepQLearning(gamma=config.gamma)

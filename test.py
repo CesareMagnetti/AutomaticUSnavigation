@@ -60,17 +60,18 @@ if __name__ == "__main__":
     visualizer  = Visualizer(agent.results_dir)
     if not os.path.exists(os.path.join(agent.results_dir, "test")):
         os.makedirs(os.path.join(agent.results_dir, "test"))
+
+
     # 6. run test experiments on all given environments and generate outputs
-    total_rewards = {}
-    # get the goal plane for each env for comparison in the visualization
+    total_rewards = {"planeDistanceReward": [], "anatomyReward": []}
     goal_planes = {env.vol_id: env.sample_plane(env.goal_state)["plane"] for env in envs}
     for key,value in goal_planes.items():
         if len(value.shape)>2:
             goal_planes[key] =  value[0, ...]
         goal_planes[key] = goal_planes[key]/goal_planes[key].max()
-    total_rewards["planeDistanceReward"] = {}
-    if config.anatomyRewardWeight > 0:
-        total_rewards["anatomyReward"] = {}
+    terminal_planes = {env.vol_id: [] for env in envs}
+    terminal_states = {env.vol_id: [] for env in envs}
+
     for run in range(max(int(config.n_runs/len(envs)), 1)):
         print("test run: [{}]/[{}]".format(run+1, int(config.n_runs/len(envs))))
         out = agent.test_agent(config.n_steps, envs, qnetwork)
@@ -80,7 +81,10 @@ if __name__ == "__main__":
                 if key not in total_rewards[reward]:
                     total_rewards[reward][key] = []
                 total_rewards[reward][key].append(logs["logs"][reward])
-            # 6.2. render trajectories if queried
+            # 6.2. gather terminal states and planes reached
+            terminal_states[key].append(logs["terminal_state"])
+            terminal_planes[key].append(logs["terminal_plane"])
+            # 6.3. render trajectories if queried
             if config.render:
                 print("rendering logs for: {} ([{}]/[{}])".format(key, i, len(out)))
                 if not os.path.exists(os.path.join(agent.results_dir, "test", key)):
@@ -88,6 +92,8 @@ if __name__ == "__main__":
                 visualizer.render_full(logs, fname = os.path.join(agent.results_dir, "test", key, "{}_{}.gif".format(config.fname, run)))
                 #visualizer.render_frames(logs["planes"], logs["planes"], fname="trajectory.gif", n_rows=2, fps=10)
     
+    
+
     # 7. re-organize logged rewards
     for reward_key, reward in total_rewards.items():
         fig = plt.figure(figsize=(15,10))

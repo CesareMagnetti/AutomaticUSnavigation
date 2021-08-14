@@ -66,17 +66,17 @@ def train(config, local_model, target_model, name, wandb_entity="us_navigation",
                 if episode % max(1, int(config.log_freq/len(envs))) == 0:
                         wandb.log(logs, commit=True)
                 # save agent locally and test its current greedy policy
+                local_model.save(os.path.join(agent.checkpoints_dir, "latest.pth"))
+                torch.save(optimizer.state_dict(), os.path.join(agent.checkpoints_dir, "latest_optimizer.pth"))
+                for i, buffer in enumerate(buffers):
+                    buffer.save(os.path.join(config.checkpoints_dir, config.name, "latest_{}_".format(i)))
                 if episode % max(1, int(config.save_freq)) == 0:
                         if not sweep:
-                            print("saving latest model, optimizer and buffer...")
-                            local_model.save(os.path.join(agent.checkpoints_dir, "latest.pth"))
+                            print("saving model, optimizer and buffer...")
                             local_model.save(os.path.join(agent.checkpoints_dir, "episode%d.pth"%episode))
-                            torch.save(optimizer.state_dict(), os.path.join(agent.checkpoints_dir, "latest_optimizer.pth"))
                             torch.save(optimizer.state_dict(), os.path.join(agent.checkpoints_dir, "episode%d_optimizer.pth"%episode))
                             for i, buffer in enumerate(buffers):
-                                buffer.save(os.path.join(config.checkpoints_dir, config.name, "latest_{}_".format(i)))
                                 buffer.save(os.path.join(config.checkpoints_dir, config.name, "episode{}_{}_".format(episode, i)))
-
                         # test the greedy policy on a random environment and send logs to wandb
                         out = agent.test_agent(config.n_steps_per_episode, [envs[np.random.randint(agent.n_envs)]], local_model)
                         for _, log in out.items():

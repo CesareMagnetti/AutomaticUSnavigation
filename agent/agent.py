@@ -1,6 +1,6 @@
 from agent.baseAgent import BaseAgent
 import numpy as np
-import torch, os, wandb
+import torch
 from tqdm import tqdm
 import concurrent.futures
 
@@ -30,7 +30,6 @@ class SingleVolumeAgent(BaseAgent):
         Returns logs (dict): all relevant logs acquired throughout the episode.
         """  
         self.episode+=1
-        episode_loss = 0
         env.reset()
         sample = env.sample_plane(env.state, preprocess=True)
         # play episode (stores transition tuples to the buffer)
@@ -96,6 +95,7 @@ class SingleVolumeAgent(BaseAgent):
                     # out["logs"].extend([{log: r for log,r in env.logs.items()}]*(steps-step))
                     out["logs"].extend([{log: r for log,r in env.current_logs.items()}]*(steps-step))
                     out["terminal_plane"] = sample["plane"].squeeze()
+                    out["terminal_state"] = env.state
                     break
         # add logs for wandb to out
         out["wandb"] = {log+"_test": r for log,r in env.logs.items()}
