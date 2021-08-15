@@ -2,19 +2,17 @@ import torch, os
 import torch.nn as nn
 
 def setup_networks(config):
-    # manual seed
-    torch.manual_seed(config.seed)
     # setup correct channels if we are location aware
     nchannels = 1 if not config.location_aware else 4
     # 1. instanciate the Qnetworks
     if config.default_Q is None:
-        params = [(nchannels, config.load_size, config.load_size), config.action_size, config.n_agents, config.seed, config.n_blocks_Q,
+        params = [(nchannels, config.load_size, config.load_size), config.action_size, config.n_agents, config.n_blocks_Q,
                    config.downsampling_Q, config.n_features_Q, not config.no_dropout_Q, not config.no_batchnorm_Q]
     elif config.default_Q.lower() == "small":
-        params = [(nchannels, config.load_size, config.load_size), config.action_size, config.n_agents, config.seed, 3,
+        params = [(nchannels, config.load_size, config.load_size), config.action_size, config.n_agents, 3,
                    4, 32, not config.no_dropout_Q, not config.no_batchnorm_Q]
     elif config.default_Q.lower() == "large":
-        params = [(nchannels, config.load_size, config.load_size), config.action_size, config.n_agents, config.seed, 6,
+        params = [(nchannels, config.load_size, config.load_size), config.action_size, config.n_agents, 6,
                    2, 4, not config.no_dropout_Q, not config.no_batchnorm_Q]
     else:
         raise ValueError('unknown param ``--default_Q``: {}. available options: [small, large]'.format(config.default_Q))
@@ -87,7 +85,7 @@ class SimpleQNetwork(nn.Module):
     """
     very simple CNN backbone followed by N heads, one for each agent.
     """
-    def __init__(self, state_size, action_size, Nheads, seed, Nblocks=6, downsampling=2, num_features=4, dropout=True, batchnorm=True):
+    def __init__(self, state_size, action_size, Nheads, Nblocks=6, downsampling=2, num_features=4, dropout=True, batchnorm=True):
         """
         params
         ======
@@ -103,7 +101,6 @@ class SimpleQNetwork(nn.Module):
                                  
         """
         super(SimpleQNetwork, self).__init__()
-        self.seed = torch.manual_seed(seed)
 
         # build convolutional backbone
         cnn = [ConvBlock(state_size[0], num_features, 3, downsampling, 1, dropout, batchnorm)]
@@ -148,9 +145,9 @@ class SimpleQNetwork(nn.Module):
 class DuelingQNetwork(SimpleQNetwork):
     """Implements Dueling Q learning rather than standard Q Learning, inherits most of the Q network
     """
-    def __init__(self, state_size, action_size, Nheads, seed, Nblocks=6, downsampling=2, num_features=4, dropout=True, batchnorm=True):
+    def __init__(self, state_size, action_size, Nheads, Nblocks=6, downsampling=2, num_features=4, dropout=True, batchnorm=True):
         # initialize Q-network
-        SimpleQNetwork.__init__(state_size, action_size, Nheads, seed, Nblocks, downsampling, num_features, dropout, batchnorm)
+        SimpleQNetwork.__init__(state_size, action_size, Nheads, Nblocks, downsampling, num_features, dropout, batchnorm)
         
         # set the value stream as a linear head on top of the parent convolutional block
         self.value_stream = HeadBlock(self.num_linear_features, 1, dropout, batchnorm)
@@ -176,9 +173,9 @@ class DuelingQNetwork(SimpleQNetwork):
     
 class RecurrentQnetwork(SimpleQNetwork):
     "adds a recurrent LSTM layer after the convolutional block to consider an history of time-frames when making a decision."
-    def __init__(self, state_size, action_size, Nheads, seed, Nblocks=6, downsampling=2, num_features=4, dropout=True, batchnorm=True):       
+    def __init__(self, state_size, action_size, Nheads, Nblocks=6, downsampling=2, num_features=4, dropout=True, batchnorm=True):       
         # initialize Q-network
-        SimpleQNetwork.__init__(state_size, action_size, Nheads, seed, Nblocks, downsampling, num_features, dropout, batchnorm)
+        SimpleQNetwork.__init__(state_size, action_size, Nheads, Nblocks, downsampling, num_features, dropout, batchnorm)
 
         # initialize the recurrent layer
         self.recurrent_layer = nn.LSTM(self.num_linear_features, self.num_linear_features, batch_first=True)
@@ -210,9 +207,9 @@ class RecurrentQnetwork(SimpleQNetwork):
 
 class RecurrentDuelingQNetwork(DuelingQNetwork):
     "adds a recurrent LSTM layer after the convolutional block to consider an history of time-frames when making a decision."
-    def __init__(self, state_size, action_size, Nheads, seed, Nblocks=6, downsampling=2, num_features=4, dropout=True, batchnorm=True):       
+    def __init__(self, state_size, action_size, Nheads, Nblocks=6, downsampling=2, num_features=4, dropout=True, batchnorm=True):       
         # initialize Q-network
-        DuelingQNetwork.__init__(state_size, action_size, Nheads, seed, Nblocks, downsampling, num_features, dropout, batchnorm)
+        DuelingQNetwork.__init__(state_size, action_size, Nheads, Nblocks, downsampling, num_features, dropout, batchnorm)
 
         # initialize the recurrent layer
         self.recurrent_layer = nn.LSTM(self.num_linear_features, self.num_linear_features, batch_first=False)

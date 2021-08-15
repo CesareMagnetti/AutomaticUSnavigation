@@ -171,10 +171,11 @@ class BaseEnvironment(object):
 
         # normalize the coeffs (they would still define the same plane)
         norm = np.sum([abs(a), abs(b), abs(c), abs(d)])
-        a /= norm
-        b /= norm
-        c /= norm
-        d /= norm
+        if norm>0:
+            a /= norm
+            b /= norm
+            c /= norm
+            d /= norm
 
         return np.array([a, b, c, d])
         

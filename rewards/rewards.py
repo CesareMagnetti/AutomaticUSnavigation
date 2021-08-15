@@ -16,13 +16,13 @@ class PlaneDistanceReward(object):
     def __call__(self, coefs):
         # if previous plane is none (first step) set it equal to the current step -> reward of zero at the beginning
         if self.previous_plane is None:
-            raise ValueError('self.previous_plane not defined. Overwrite it as ``instance.previous_plane = self.get_plane_coefs(pointA, pointB, pointC)``')
+            raise ValueError('self.previous_plane not defined. Overwrite it as ``self.previous_plane = self.get_plane_coefs(pointA, pointB, pointC)``')
         # calculate euclidean distance between current plane and the goal
         D1 = self.get_distance_from_goal(coefs)
         # calculate distance between previous plane and goal
         D2 = self.get_distance_from_goal(self.previous_plane)
         # store plane as the new previous plane
-        self.previous_plane = np.array(coefs)
+        self.previous_plane = coefs
         # return sign function of distance improvement (D1 should be smaller than D2 if we are getting closer -> +1 if closer, -1 if further, 0 if same distance)
         return self.weight*np.sign(D2-D1) # scale by weight
 
