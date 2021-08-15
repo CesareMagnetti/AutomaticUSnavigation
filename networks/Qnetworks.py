@@ -212,7 +212,7 @@ class RecurrentDuelingQNetwork(DuelingQNetwork):
         super(RecurrentDuelingQNetwork, self).__init__(state_size, action_size, Nheads, Nblocks, downsampling, num_features, dropout, batchnorm)
 
         # initialize the recurrent layer
-        self.recurrent_layer = nn.LSTM(self.num_linear_features, self.num_linear_features, batch_first=False)
+        self.recurrent_layer = nn.LSTM(self.num_linear_features, self.num_linear_features, batch_first=True)
     
     def forward(self, x):
         """ forward pass through the network
