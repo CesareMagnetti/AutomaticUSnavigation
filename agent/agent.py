@@ -34,14 +34,17 @@ class SingleVolumeAgent(BaseAgent):
         sample = env.sample_plane(env.state, preprocess=True)
         # play episode (stores transition tuples to the buffer)
         with torch.no_grad():
-            for _ in range(self.config.n_steps_per_episode):  
+            for i in range(self.config.n_steps_per_episode):  
                 self.t_step+=1
                 # get action from current state
                 actions = self.act(sample["plane"], local_model, self.eps) 
                 # step the environment to return a transitiony  
                 transition, next_sample = env.step(actions, preprocess=True)
                 # add (state, action, reward, next_state) to buffer
-                buffer.add(transition)
+                if self.config.recurrent:
+                    buffer.add(transition, is_first_time_step = i == 0)
+                else:
+                    buffer.add(transition)
                 # set sample to next sample
                 sample= next_sample
                 # if done, end episode early
@@ -130,8 +133,9 @@ class SingleVolumeAgent(BaseAgent):
         batch, weights, indices = buffer.sample(beta=self.beta)
         weights = torch.from_numpy(weights).float().squeeze()
         states, actions, rewards, next_states, dones = batch
-        # TODO: add handle to prepare batch when recurrent Q network is used, states will be Seq_lex x B x 3 x 3
+        # TODO: add handle to prepare batch when recurrent Q network is used, states will be B x L x 3 x 3
         # if we do this right nothing else in the pipeline should change
+        print(states, len(states))
         # 2. sample planes and next_planes using multiple threads
         sample = env.sample_planes(states+next_states, preprocess=True)
         # 3. preprocess each item
