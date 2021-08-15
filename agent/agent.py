@@ -69,6 +69,12 @@ class SingleVolumeAgent(BaseAgent):
         # play an episode greedily
         with torch.no_grad():
             for step in tqdm(range(1, steps+1), desc="testing..."):
+                # get action from current state
+                actions = self.act(sample["plane"], local_model)
+                # observe transition and next_slice
+                transition, next_sample = env.step(actions, preprocess=True)
+                # set slice to next slice
+                sample = next_sample
                 # add logs to output dict  
                 out["planes"].append(sample["plane"].squeeze())
                 out["segs"].append(sample["seg"].squeeze())
@@ -78,27 +84,15 @@ class SingleVolumeAgent(BaseAgent):
                 ## for cumulative logs uncomment the next line and comment the one after
                 #out["logs"].append({log: r for log,r in env.logs.items()})
                 out["logs"].append({log: r for log,r in env.current_logs.items()})
-                # get action from current state
-                actions = self.act(sample["plane"], local_model)
-                # observe transition and next_slice
-                transition, next_sample = env.step(actions, preprocess=True)
-                # set slice to next slice
-                sample = next_sample
                 # if done, end episode early and pad logs with terminal state
                 if transition[-1]:
-                    out["planes"].extend([sample["plane"].squeeze()]*(steps-step))
-                    out["segs"].extend([sample["seg"].squeeze()]*(steps-step))
-                    if self.config.CT2US:
-                        out["planesCT"].extend([sample["planeCT"].squeeze()]*(steps-step))
-                    out["states"].extend([env.state]*(steps-step))
-                    # # for cumulative logs uncomment the next line and comment the one after
-                    # out["logs"].extend([{log: r for log,r in env.logs.items()}]*(steps-step))
-                    out["logs"].extend([{log: r for log,r in env.current_logs.items()}]*(steps-step))
                     break
         # add logs for wandb to out
         out["wandb"] = {log+"_test": r for log,r in env.logs.items()}
         # re-arrange the logs key so that it goes from list of dicts to dict of lists
         out["logs"] = {k: [dic[k] for dic in out["logs"]] for k in out["logs"][0]}
+        # get the mean rewards collected by the agents in the episode
+        out["logs_mean"] = {key: np.mean(val) for key, val in out["logs"].items()}
         return out
     
     def train(self, env, buffer, local_model, target_model, optimizer, criterion, n_iter=1):
@@ -190,39 +184,36 @@ class MultiVolumeAgent(SingleVolumeAgent):
         self.n_envs = len(config.volume_ids.split(','))
         
     # rewrite the play episode function
-    def play_episode(self, envs, local_model, target_model, optimizer, criterion, buffers, env_id=None):
+    def play_episode(self, envs, local_model, target_model, optimizer, criterion, buffers):
         """ Plays one episode on an input environment.
         Params:
         ==========
-            envs list[environment/* instance]: list of environments the agent will interact with while training.
+            envs dict[environment/* instance]: dict of environments the agent will interact with while training.
             local_model (PyTorch model): pytorch network that will be trained using a particular training routine (i.e. DQN)
             target_model (PyTorch model): pytorch network that will be used as a target to estimate future Qvalues. 
                                           (it is a hard copy or a running average of the local model, helps against diverging)
             optimizer (PyTorch optimizer): optimizer to update the local network weights.
             criterion (PyTorch Module): loss to minimize in order to train the local network.
-            buffers list[buffer/* object]: list of replay buffers (one per environment)
+            buffers dict[buffer/* object]: dict of replay buffers (one per environment, same keys)
             env_id (int, optional): which environment to use, if None chose at random.
         Returns logs (dict): all relevant logs acquired throughout the episode.
         """  
         # play episode in each environment using multi-threading
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            futures = {self.config.volume_ids.split(',')[idx]: executor.submit(super(MultiVolumeAgent, self).play_episode,
-                                                                               env,
-                                                                               local_model,
-                                                                               target_model,
-                                                                               optimizer,
-                                                                               criterion,
-                                                                               buffer) for idx, (env, buffer) in enumerate(zip(envs, buffers))}
-        logs = {key: f.result() for key, f in futures.items()}
+            futures = {vol_id: executor.submit(super(MultiVolumeAgent, self).play_episode, envs[vol_id],
+                                                                                           local_model,
+                                                                                           target_model,
+                                                                                           optimizer,
+                                                                                           criterion,
+                                                                                           buffers[vol_id]) for vol_id in envs}
+        logs = {vol_id: f.result() for vol_id, f in futures.items()}
         return logs
  
     # rewrite the prepare batch
     def prepare_batch(self, envs, buffers):
         # 1. sample batches in parallel from all buffers
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            futures = {self.config.volume_ids.split(',')[idx]: executor.submit(super(MultiVolumeAgent, self).prepare_batch,
-                                                                               env,
-                                                                               buffer) for idx, (env, buffer) in enumerate(zip(envs, buffers))}
+            futures = {vol_id: executor.submit(super(MultiVolumeAgent, self).prepare_batch, envs[vol_id], buffers[vol_id]) for vol_id in envs}
         batches = [f.result() for f in futures.values()]
         # 2. concatenate states, actions, rewards, next_states, weights and indices from all buffers into a single batch
         states = torch.cat([batch["states"] for batch in batches], dim=0)
@@ -241,7 +232,7 @@ class MultiVolumeAgent(SingleVolumeAgent):
         # train the q_network for a number of iterations
         local_model.train()
         total_loss = 0
-        for i in tqdm(range(n_iter), desc="training Qnetwork..."):
+        for _ in tqdm(range(n_iter), desc="training Qnetwork..."):
             # 1. sample batch and send to GPU
             batch = self.prepare_batch(envs, buffers)
             for key in batch:
@@ -250,10 +241,9 @@ class MultiVolumeAgent(SingleVolumeAgent):
             # 2. take a training step
             loss, deltas = self.learn(batch, local_model, target_model, optimizer, criterion)
             # 3. update priorities for each buffer separately (do this in parallel)
-            #indices = batch["indices"].reshape(self.n_envs, -1)
             deltas = deltas.cpu().detach().numpy().squeeze().reshape(self.n_envs, -1)
             with concurrent.futures.ThreadPoolExecutor() as executor:
-                futures = [executor.submit(buffer.update_priorities, ind, delt) for buffer, ind, delt in zip(buffers, batch["indices"], deltas)]
+                futures = [executor.submit(buffer.update_priorities, ind, delt) for buffer, ind, delt in zip(buffers.values(), batch["indices"], deltas)]
             # 4. add to total loss
             total_loss+=loss.item()
         # set back to eval mode as we will only be training inside this function
@@ -269,14 +259,11 @@ class MultiVolumeAgent(SingleVolumeAgent):
         Params:
         ==========
             steps (int): number of steps to test the agent for.
-            envs list[environment/* instance]: list of environments.
+            envs dict[environment/* instance]: dict of environments.
             local_model (PyTorch model): pytorch network that will be tested.
         """
         # test agent on each environment using multi-threading
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            futures = {self.config.volume_ids.split(',')[idx]: executor.submit(super(MultiVolumeAgent, self).test_agent,
-                                                                               steps,
-                                                                               env,
-                                                                               local_model) for idx, env in enumerate(envs)}
-        logs = {key: f.result() for key, f in futures.items()}
+            futures = {vol_id: executor.submit(super(MultiVolumeAgent, self).test_agent, steps, envs[vol_id], local_model) for vol_id in envs}
+        logs = {vol_id: f.result() for vol_id, f in futures.items()}
         return logs

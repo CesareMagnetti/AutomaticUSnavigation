@@ -1,5 +1,5 @@
 import argparse
-import torch
+from argparse import Namespace
 import os
 
 # parsing arguments
@@ -107,6 +107,7 @@ def gather_options(phase="train"):
         parser.add_argument('--log_freq', type=int, default=10, help="frequency (in episodes) with wich we store logs to weights and biases.") 
     elif phase=="test":
         parser.add_argument('--train', action='store_true', default=False, help="training flag set to False.")
+        parser.add_argument('--option_file', type=str, default="train_options.txt", help=".txt file from which we load options.")
         parser.add_argument('--n_runs', type=int, default=10, help="number of test runs to do")
         parser.add_argument('--n_steps', type=int, default=250, help="number of steps to test the agent for.")
         parser.add_argument('--fname', type=str, default="sample", help="name of the file to save (gif).")
@@ -116,7 +117,7 @@ def gather_options(phase="train"):
         
     return parser
 
-def print_options(opt, parser):
+def print_options(opt, parser, save = True):
     """Print and save options
     It will print both current options and default values(if different).
     It will save options into a text file / [checkpoints_dir] / opt.txt
@@ -132,16 +133,55 @@ def print_options(opt, parser):
     message += '----------------- End -------------------'
     print(message)
 
-    # save to the disk
-    expr_dir = os.path.join(opt.checkpoints_dir, opt.name)
-    if not os.path.exists(expr_dir):
-        os.makedirs(expr_dir)
+    if save:
+        # save to the disk
+        expr_dir = os.path.join(opt.checkpoints_dir, opt.name)
+        if not os.path.exists(expr_dir):
+            os.makedirs(expr_dir)
+        if opt.train:
+            file_name = os.path.join(expr_dir, 'train_options.txt')
+        else:
+            file_name = os.path.join(expr_dir, 'test_options.txt')
+        with open(file_name, 'wt') as opt_file:
+            opt_file.write(message)
+            opt_file.write('\n')
 
-    if opt.train:
-        file_name = os.path.join(expr_dir, 'train_options.txt')
-    else:
-        file_name = os.path.join(expr_dir, 'test_options.txt')
+def load_options(opt, load_filename=None):
+    """ loads and overrides options in opt with an existing option .txt output"""
+    if load_filename is None:
+        load_filename = 'train_options.txt'
+    load_path = os.path.join(opt.checkpoints_dir, opt.name, load_filename)
+    print("loading options from: {} ...".format(load_path))
+    with open(load_path, 'r') as opt_file:
+        lines = opt_file.readlines()
 
-    with open(file_name, 'wt') as opt_file:
-        opt_file.write(message)
-        opt_file.write('\n')
+    # read options from the txt file 
+    opt = vars(opt)
+    load_opt = {}    
+    for line in lines:
+        if ':' in line:
+            key = line.split(':')[0].strip()
+            if key in opt:
+                # specify which keys we do NOT want to overwrite
+                if key not in ["load", "load_name", "wandb", "volume_ids", "n_runs", "n_steps", "fname", "render", "option_file", "easy_objective"]:
+                    # get the str version of the value
+                    value = line.split(':')[1].strip()
+                    if "default" in value:
+                        value = value.split("[default")[0].strip()
+                    # if instance of bool handle explicitely to cast str to bool
+                    if value.lower() in ["true", "false"]:
+                        value = value == "True"
+                    # otherwise cast implicitely with type()()
+                    else:
+                        value = type(opt[key])(value)
+                    load_opt[key] = value
+    
+    # overwrite overlapping opt entries with entries from load_opt
+    for key in load_opt:
+        opt[key] = load_opt[key]
+    
+    # reconvert opt to be a Namespace
+    opt = Namespace(**opt)
+
+    return opt
+    

@@ -43,7 +43,7 @@ def train(config, local_model, target_model, name, wandb_entity="us_navigation",
         # ==== LAUNCH TRAINING ====
         # 1. launch exploring steps if needed
         if agent.config.exploring_steps>0:
-                for idx, (env,buffer) in enumerate(zip(envs, buffers), 1):
+                for idx, (env,buffer) in enumerate(zip(envs.values(), buffers.values()), 1):
                     print("[{}]/[{}] random walk to collect experience...".format(idx, len(envs)))
                     env.random_walk(int(config.exploring_steps/len(envs)), buffer)  
         # 2. initialize wandb for logging purposes
@@ -74,7 +74,8 @@ def train(config, local_model, target_model, name, wandb_entity="us_navigation",
                             for i, buffer in enumerate(buffers):
                                 buffer.save(os.path.join(config.checkpoints_dir, config.name, "episode{}_{}_".format(episode, i)))
                         # test the greedy policy on a random environment and send logs to wandb
-                        out = agent.test_agent(config.n_steps_per_episode, [envs[np.random.randint(agent.n_envs)]], local_model)
+                        test_env_id = np.random.choice(config.volume_ids.split(","))
+                        out = agent.test_agent(config.n_steps_per_episode, {test_env_id: envs[test_env_id]}, local_model)
                         for _, log in out.items():
                             wandb.log(log["wandb"], commit=True)
                             # animate the trajectory followed by the agent in the current episode
@@ -89,19 +90,19 @@ def train(config, local_model, target_model, name, wandb_entity="us_navigation",
         wandb.save(os.path.join(agent.checkpoints_dir, "DQN.onnx"))
 
 def setup_environment(config):
-    envs = []
-    for vol_id in range(len(config.volume_ids.split(','))):
+    envs = {}
+    for vol_id in config.volume_ids.split(','):
         if not config.location_aware and not config.CT2US:
-            envs.append(SingleVolumeEnvironment(config, vol_id=vol_id))
+            envs[vol_id] = SingleVolumeEnvironment(config, vol_id=vol_id)
         elif not config.location_aware and config.CT2US: 
-            envs.append(CT2USSingleVolumeEnvironment(config, vol_id=vol_id))
+            envs[vol_id] = CT2USSingleVolumeEnvironment(config, vol_id=vol_id)
         elif config.location_aware and not config.CT2US:
-            envs.append(LocationAwareSingleVolumeEnvironment(config, vol_id=vol_id))
+            envs[vol_id] = LocationAwareSingleVolumeEnvironment(config, vol_id=vol_id)
         else:
-            envs.append(LocationAwareCT2USSingleVolumeEnvironment(config, vol_id=vol_id))        
+            envs[vol_id] = LocationAwareCT2USSingleVolumeEnvironment(config, vol_id=vol_id)    
     # start reward function of each agent based on the input config parsed
-    for env in envs:
-        env.set_reward()     
+    for key in envs:
+        envs[key].set_reward()     
     return envs
 
 def setup_optimizer(config, local_model):
@@ -119,7 +120,9 @@ def setup_optimizer(config, local_model):
 
 def setup_buffers(config, N):
     # instanciate buffers
-    buffers = [PrioritizedReplayBuffer(config.buffer_size, config.batch_size, config.alpha),]*N
+    buffers = {}
+    for vol_id in config.volume_ids.split(','):
+        buffers[vol_id] = PrioritizedReplayBuffer(config.buffer_size, config.batch_size, config.alpha)
     # load buffers if needed
     if config.load is not None:
         if config.load_name is not None:
@@ -127,8 +130,8 @@ def setup_buffers(config, N):
         else:
             load_name = config.name
         print("loading {}/{} buffers ...".format(load_name, config.load))
-        for i, buffer in enumerate(buffers):
-            buffer.load(os.path.join(config.checkpoints_dir, load_name, "{}_{}_".format(config.load, i)))
+        for vol_id, buffer in buffers.items():
+            buffer.load(os.path.join(config.checkpoints_dir, load_name, "{}_{}_".format(config.load, vol_id)))
     return buffers
 
 def setup_criterion(config):

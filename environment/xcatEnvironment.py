@@ -20,11 +20,8 @@ class SingleVolumeEnvironment(BaseEnvironment):
 
         # initialize the base environment
         BaseEnvironment.__init__(self, config)
-
         # identify the volume used by this environment instance
-        volume_ids = config.volume_ids.split(',')
-        self.vol_id = volume_ids[vol_id]
-        
+        self.vol_id = vol_id
         # load queried CT volume
         itkVolume = sitk.ReadImage(os.path.join(self.dataroot, self.vol_id+"_1_CT.nii.gz"))
         Volume = sitk.GetArrayFromImage(itkVolume) 
