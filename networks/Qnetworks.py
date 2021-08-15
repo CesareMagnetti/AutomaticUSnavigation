@@ -147,7 +147,7 @@ class DuelingQNetwork(SimpleQNetwork):
     """
     def __init__(self, state_size, action_size, Nheads, Nblocks=6, downsampling=2, num_features=4, dropout=True, batchnorm=True):
         # initialize Q-network
-        SimpleQNetwork.__init__(state_size, action_size, Nheads, Nblocks, downsampling, num_features, dropout, batchnorm)
+        super(DuelingQNetwork, self).__init__(state_size, action_size, Nheads, Nblocks, downsampling, num_features, dropout, batchnorm)
         
         # set the value stream as a linear head on top of the parent convolutional block
         self.value_stream = HeadBlock(self.num_linear_features, 1, dropout, batchnorm)
@@ -175,7 +175,7 @@ class RecurrentQnetwork(SimpleQNetwork):
     "adds a recurrent LSTM layer after the convolutional block to consider an history of time-frames when making a decision."
     def __init__(self, state_size, action_size, Nheads, Nblocks=6, downsampling=2, num_features=4, dropout=True, batchnorm=True):       
         # initialize Q-network
-        SimpleQNetwork.__init__(state_size, action_size, Nheads, Nblocks, downsampling, num_features, dropout, batchnorm)
+        super(RecurrentQnetwork, self).__init__(state_size, action_size, Nheads, Nblocks, downsampling, num_features, dropout, batchnorm)
 
         # initialize the recurrent layer
         self.recurrent_layer = nn.LSTM(self.num_linear_features, self.num_linear_features, batch_first=True)
@@ -209,7 +209,7 @@ class RecurrentDuelingQNetwork(DuelingQNetwork):
     "adds a recurrent LSTM layer after the convolutional block to consider an history of time-frames when making a decision."
     def __init__(self, state_size, action_size, Nheads, Nblocks=6, downsampling=2, num_features=4, dropout=True, batchnorm=True):       
         # initialize Q-network
-        DuelingQNetwork.__init__(state_size, action_size, Nheads, Nblocks, downsampling, num_features, dropout, batchnorm)
+        super(RecurrentDuelingQNetwork, self).__init__(state_size, action_size, Nheads, Nblocks, downsampling, num_features, dropout, batchnorm)
 
         # initialize the recurrent layer
         self.recurrent_layer = nn.LSTM(self.num_linear_features, self.num_linear_features, batch_first=False)
