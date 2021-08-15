@@ -24,7 +24,7 @@ class ReplayBuffer:
     def sample(self):
         """Randomly sample a batch of experiences from memory."""
         # 2. sample experiences
-        indices = np.random.choice(len(self.memory), size=self.batch_size, replace=False)
+        indices = np.random.choice(len(self.memory), size=self.batch_size, replace=True)
         experiences = [self.memory[i] for i in indices] # random lookup in a deque is more efficient
         # experiences = np.random.choice(self.memory, size=self.batch_size, replace=False)
         # reorganize batch
@@ -61,7 +61,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         probs = probs ** self.prob_alpha
         probs /= probs.sum()
         # 2. sample experiences
-        indices = np.random.choice(len(self.memory), size=self.batch_size, replace=False, p=probs)
+        indices = np.random.choice(len(self.memory), size=self.batch_size, replace=True, p=probs)
         experiences = [self.memory[i] for i in indices] # random lookup in a deque is more efficient
         # 3. reorganize batch
         batch = zip(*experiences)
