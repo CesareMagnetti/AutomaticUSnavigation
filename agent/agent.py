@@ -14,10 +14,7 @@ class SingleVolumeAgent(BaseAgent):
             config (argparse object): parser with all training options (see options/options.py)
         """
         # Initialize the base class
-        BaseAgent.__init__(self, config)  
-        # use a history of frames while playing/testing an episode if recurrent
-        if self.config.recurrent:
-            self.plane_history = deque(maxlen=self.config.recurrent_history_len)      
+        BaseAgent.__init__(self, config)       
 
     def play_episode(self, env, local_model, buffer):
         """ Plays one episode on an input environment.
@@ -31,20 +28,22 @@ class SingleVolumeAgent(BaseAgent):
         self.episode+=1
         env.reset()
         sample = env.sample_plane(env.state, preprocess=True)
+        if self.config.recurrent:
+            plane_history = deque(maxlen=self.config.recurrent_history_len)  # instanciate history at beginning of each episode
         # play episode (stores transition tuples to the buffer)
         with torch.no_grad():
             for i in range(self.config.n_steps_per_episode): 
                 # if recurrent add plane to history
                 if self.config.recurrent:
-                    self.plane_history.append(sample["plane"]) 
+                    plane_history.append(sample["plane"]) 
                     # if less than config.recurrent_history_len planes, then pad to the left with oldest plane in history
-                    if len(self.plane_history)<self.config.recurrent_history_len:
-                        n_pad = self.config.recurrent_history_len - len(self.plane_history)
-                        tensor_pad = self.plane_history[0]
+                    if len(plane_history)<self.config.recurrent_history_len:
+                        n_pad = self.config.recurrent_history_len - len(plane_history)
+                        tensor_pad = plane_history[0]
                         # concatenate the history to 1*LxCxHxW
-                        plane = np.concatenate([tensor_pad]*n_pad + list(self.plane_history), axis=0)
+                        plane = np.concatenate([tensor_pad]*n_pad + list(plane_history), axis=0)
                     else:
-                        plane = np.concatenate(list(self.plane_history), axis=0)
+                        plane = np.concatenate(list(plane_history), axis=0)
                 # else the current plane is passed through the Qnetwork
                 else:
                     plane = sample["plane"]
@@ -80,11 +79,27 @@ class SingleVolumeAgent(BaseAgent):
         # reset env to a random initial slice
         env.reset()
         sample = env.sample_plane(env.state, preprocess=True, return_seg=True)
+        if self.config.recurrent:
+            plane_history = deque(maxlen=self.config.recurrent_history_len)  # instanciate history at beginning of each episode
         # play an episode greedily
         with torch.no_grad():
-            for step in tqdm(range(1, steps+1), desc="testing..."):
+            for _ in tqdm(range(1, steps+1), desc="testing..."):
+                # if recurrent add plane to history
+                if self.config.recurrent:
+                    plane_history.append(sample["plane"]) 
+                    # if less than config.recurrent_history_len planes, then pad to the left with oldest plane in history
+                    if len(plane_history)<self.config.recurrent_history_len:
+                        n_pad = self.config.recurrent_history_len - len(plane_history)
+                        tensor_pad = plane_history[0]
+                        # concatenate the history to 1*LxCxHxW
+                        plane = np.concatenate([tensor_pad]*n_pad + list(plane_history), axis=0)
+                    else:
+                        plane = np.concatenate(list(plane_history), axis=0)
+                # else the current plane is passed through the Qnetwork
+                else:
+                    plane = sample["plane"]
                 # get action from current state
-                actions = self.act(sample["plane"], local_model)
+                actions = self.act(plane, local_model)
                 # observe transition and next_slice
                 transition, next_sample = env.step(actions, preprocess=True)
                 # set slice to next slice
