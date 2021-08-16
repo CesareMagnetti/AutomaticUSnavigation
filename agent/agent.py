@@ -3,6 +3,7 @@ import numpy as np
 import torch
 from tqdm import tqdm
 import concurrent.futures
+from collections import deque
 
 class SingleVolumeAgent(BaseAgent):
     """Interacts with and learns from a single environment volume."""
@@ -13,19 +14,17 @@ class SingleVolumeAgent(BaseAgent):
             config (argparse object): parser with all training options (see options/options.py)
         """
         # Initialize the base class
-        BaseAgent.__init__(self, config)        
+        BaseAgent.__init__(self, config)  
+        # use a history of frames while playing/testing an episode if recurrent
+        if self.config.recurrent:
+            self.plane_history = deque(maxlen=self.config.recurrent_history_len)      
 
-
-    def play_episode(self, env, local_model, target_model, optimizer, criterion, buffer):
+    def play_episode(self, env, local_model, buffer):
         """ Plays one episode on an input environment.
         Params:
         ==========
             env (environment/* instance): the environment the agent will interact with while training.
             local_model (PyTorch model): pytorch network that will be trained using a particular training routine (i.e. DQN)
-            target_model (PyTorch model): pytorch network that will be used as a target to estimate future Qvalues. 
-                                          (it is a hard copy or a running average of the local model, helps against diverging)
-            optimizer (PyTorch optimizer): optimizer to update the local network weights.
-            criterion (PyTorch Module): loss to minimize in order to train the local network.
             buffer (buffer/* object): replay buffer shared amongst processes (each process pushes to the same memory.)
         Returns logs (dict): all relevant logs acquired throughout the episode.
         """  
@@ -34,17 +33,29 @@ class SingleVolumeAgent(BaseAgent):
         sample = env.sample_plane(env.state, preprocess=True)
         # play episode (stores transition tuples to the buffer)
         with torch.no_grad():
-            for i in range(self.config.n_steps_per_episode):  
+            for i in range(self.config.n_steps_per_episode): 
+                # if recurrent add plane to history
+                if self.config.recurrent:
+                    self.plane_history.append(sample["plane"]) 
+                    # if less than config.recurrent_history_len planes, then pad to the left with oldest plane in history
+                    if len(self.plane_history)<self.config.recurrent_history_len:
+                        n_pad = self.config.recurrent_history_len - len(self.plane_history)
+                        tensor_pad = self.plane_history[0]
+                        # concatenate the history to 1*LxCxHxW
+                        plane = np.concatenate([tensor_pad]*n_pad + list(self.plane_history), axis=0)
+                    else:
+                        plane = np.concatenate(list(self.plane_history), axis=0)
+                # else the current plane is passed through the Qnetwork
+                else:
+                    plane = sample["plane"]
                 self.t_step+=1
                 # get action from current state
-                actions = self.act(sample["plane"], local_model, self.eps) 
+                actions = self.act(plane, local_model, self.eps) 
                 # step the environment to return a transitiony  
                 transition, next_sample = env.step(actions, preprocess=True)
                 # add (state, action, reward, next_state) to buffer
-                if self.config.recurrent:
-                    buffer.add(transition, is_first_time_step = i == 0)
-                else:
-                    buffer.add(transition)
+                if self.config.recurrent: buffer.add(transition, is_first_time_step = i == 0)
+                else: buffer.add(transition)
                 # set sample to next sample
                 sample= next_sample
                 # if done, end episode early
@@ -133,14 +144,13 @@ class SingleVolumeAgent(BaseAgent):
         batch, weights, indices = buffer.sample(beta=self.beta)
         weights = torch.from_numpy(weights).float().squeeze()
         states, actions, rewards, next_states, dones = batch
-        # TODO: add handle to prepare batch when recurrent Q network is used, states will be B x L x 3 x 3
-        # if we do this right nothing else in the pipeline should change
-        print(states, len(states))
+        # this is used when recurrent Q network is used, states and next_states will be B*L x 3 x 3
+        L = self.config.recurrent_history_len if self.config.recurrent else 1
         # 2. sample planes and next_planes using multiple threads
         sample = env.sample_planes(states+next_states, preprocess=True)
         # 3. preprocess each item
-        states = torch.from_numpy(np.vstack(sample["plane"][:self.config.batch_size])).float()
-        next_states = torch.from_numpy(np.vstack(sample["plane"][self.config.batch_size:])).float()
+        states = torch.from_numpy(np.vstack(sample["plane"][:self.config.batch_size*L])).float()
+        next_states = torch.from_numpy(np.vstack(sample["plane"][self.config.batch_size*L:])).float()
         rewards = torch.from_numpy(np.hstack(rewards)).unsqueeze(-1).float()
         actions = torch.from_numpy(np.hstack(actions)).unsqueeze(-1).long()
         dones = torch.tensor(dones).unsqueeze(-1).bool()
@@ -188,27 +198,19 @@ class MultiVolumeAgent(SingleVolumeAgent):
         self.n_envs = len(config.volume_ids.split(','))
         
     # rewrite the play episode function
-    def play_episode(self, envs, local_model, target_model, optimizer, criterion, buffers):
+    def play_episode(self, envs, local_model, buffers):
         """ Plays one episode on an input environment.
         Params:
         ==========
             envs dict[environment/* instance]: dict of environments the agent will interact with while training.
             local_model (PyTorch model): pytorch network that will be trained using a particular training routine (i.e. DQN)
-            target_model (PyTorch model): pytorch network that will be used as a target to estimate future Qvalues. 
-                                          (it is a hard copy or a running average of the local model, helps against diverging)
-            optimizer (PyTorch optimizer): optimizer to update the local network weights.
-            criterion (PyTorch Module): loss to minimize in order to train the local network.
             buffers dict[buffer/* object]: dict of replay buffers (one per environment, same keys)
-            env_id (int, optional): which environment to use, if None chose at random.
         Returns logs (dict): all relevant logs acquired throughout the episode.
         """  
         # play episode in each environment using multi-threading
         with concurrent.futures.ThreadPoolExecutor() as executor:
             futures = {vol_id: executor.submit(super(MultiVolumeAgent, self).play_episode, envs[vol_id],
                                                                                            local_model,
-                                                                                           target_model,
-                                                                                           optimizer,
-                                                                                           criterion,
                                                                                            buffers[vol_id]) for vol_id in envs}
         logs = {vol_id: f.result() for vol_id, f in futures.items()}
         return logs

@@ -18,11 +18,21 @@ def setup_networks(config):
         raise ValueError('unknown param ``--default_Q``: {}. available options: [small, large]'.format(config.default_Q))
     # instanciate and send to gpu
     if config.dueling:
-        qnetwork_local = DuelingQNetwork(*params).to(config.device)
-        qnetwork_target = DuelingQNetwork(*params).to(config.device)
+        if config.recurrent:
+            params += [config.recurrent_history_len]
+            qnetwork_local = RecurrentDuelingQNetwork(*params).to(config.device)
+            qnetwork_target = RecurrentDuelingQNetwork(*params).to(config.device)
+        else:
+            qnetwork_local = DuelingQNetwork(*params).to(config.device)
+            qnetwork_target = DuelingQNetwork(*params).to(config.device)
     else:
-        qnetwork_local = SimpleQNetwork(*params).to(config.device)
-        qnetwork_target = SimpleQNetwork(*params).to(config.device)
+        if config.recurrent:
+            params += [config.recurrent_history_len]
+            qnetwork_local = RecurrentQnetwork(*params).to(config.device)
+            qnetwork_target = RecurrentQnetwork(*params).to(config.device)
+        else:
+            qnetwork_local = SimpleQNetwork(*params).to(config.device)
+            qnetwork_target = SimpleQNetwork(*params).to(config.device)
     # we keep networks in evaluation mode at all times, when training is needed, .train() will be called on the local network
     qnetwork_local.eval()
     qnetwork_target.eval()
@@ -173,45 +183,48 @@ class DuelingQNetwork(SimpleQNetwork):
     
 class RecurrentQnetwork(SimpleQNetwork):
     "adds a recurrent LSTM layer after the convolutional block to consider an history of time-frames when making a decision."
-    def __init__(self, state_size, action_size, Nheads, Nblocks=6, downsampling=2, num_features=4, dropout=True, batchnorm=True):       
+    def __init__(self, state_size, action_size, Nheads, Nblocks=6, downsampling=2, num_features=4, dropout=True, batchnorm=True, history_length = 10):       
         # initialize Q-network
         super(RecurrentQnetwork, self).__init__(state_size, action_size, Nheads, Nblocks, downsampling, num_features, dropout, batchnorm)
-
+        
         # initialize the recurrent layer
+        self.history_length = history_length
         self.recurrent_layer = nn.LSTM(self.num_linear_features, self.num_linear_features, batch_first=True)
     
     def forward(self, x):
         """ forward pass through the network
         Params:
         ==========
-            x (tensor[Seq_len x B x C x H x W]): a sequence of batched image frames
+            x (tensor[B*L x C x H x W]): a sequence of batched image frames (sequence and batch are along the same dimension)
         Outputs:
         ==========
             out (list[tensor[B x action_size]]): Q values for each agent for the current frame 
         """
-        # get batch_size
-        b = x[0].shape[0]
-        # pass frames through convolutional backbone
-        y = [self.cnn(frame) for frame in x]
-        y = torch.cat([yy.reshape(b, -1).unsqueeze(0) for yy in y], dim=0) # size Seq_len x B x num_linear_features
-
+        #print("x:", x.shape)
+        # get batch size of inputs
+        B = int(x.shape[0]/self.history_length)
+        # pass all frames through convolutional backbone and reshape for LSTM 
+        y = self.cnn(x) # B*L x self.num_linear_features (B*L can be BIG: on 15 envs with B=64 and L=10 -> 15*64*10 = 9600)
+        y = y.reshape(B, self.history_length, -1) # B x L x self.num_linear_features
+        #print("y:", y.shape)
         # pass these sequential features to the recurrent layer using default (h, c) initialized as zeros
-        z, _, _ = self.recurrent_layer(y)
-
+        _, (h_n, _) = self.recurrent_layer(y)
+        #print("h_n:", h_n.shape)
         # get outputs for each head
         outs = []
         for head in self.heads:
-            outs.append(head(z))
-        
+            outs.append(head(h_n.squeeze(0)))
+        #print(["out_i: {}".format(outs[i].shape) for i in range(len(outs))])
         return outs
 
 class RecurrentDuelingQNetwork(DuelingQNetwork):
     "adds a recurrent LSTM layer after the convolutional block to consider an history of time-frames when making a decision."
-    def __init__(self, state_size, action_size, Nheads, Nblocks=6, downsampling=2, num_features=4, dropout=True, batchnorm=True):       
+    def __init__(self, state_size, action_size, Nheads, Nblocks=6, downsampling=2, num_features=4, dropout=True, batchnorm=True, history_length = 10):       
         # initialize Q-network
         super(RecurrentDuelingQNetwork, self).__init__(state_size, action_size, Nheads, Nblocks, downsampling, num_features, dropout, batchnorm)
 
         # initialize the recurrent layer
+        self.history_length = history_length
         self.recurrent_layer = nn.LSTM(self.num_linear_features, self.num_linear_features, batch_first=True)
     
     def forward(self, x):
@@ -223,26 +236,27 @@ class RecurrentDuelingQNetwork(DuelingQNetwork):
         ==========
             out (list[tensor[B x action_size]]): Q values for each agent for the current frame 
         """
-        # get batch_size
-        b = x[0].shape[0]
-        # pass frames through convolutional backbone
-        y = [self.cnn(frame) for frame in x]
-        y = torch.cat([yy.reshape(b, -1).unsqueeze(0) for yy in y], dim=0) # size Seq_len x B x num_linear_features
-
+        # print("x:", x.shape)
+        # get batch size of inputs
+        B = int(x.shape[0]/self.history_length)
+        # pass all frames through convolutional backbone and reshape for LSTM 
+        y = self.cnn(x) # B*L x self.num_linear_features (B*L can be BIG: on 15 envs with B=64 and L=10 -> 15*64*10 = 9600)
+        y = y.reshape(B, self.history_length, -1) # B x L x self.num_linear_features
+        # print("y:", y.shape)
         # pass these sequential features to the recurrent layer, using default (h, c) initialized as zeros
-        z, _, _ = self.recurrent_layer(y)
-
+        _, (h_n, _) = self.recurrent_layer(y)
+        # print("h_n:", h_n.shape)
         # get advantages for each head
         advantages = []
         for head in self.heads:
-            advantages.append(head(z))
+            advantages.append(head(h_n.squeeze(0)))
         
         # get value stream output
-        values = self.value_stream(z)
+        values = self.value_stream(h_n.squeeze(0))
 
         # aggregate the advantages and value to get the Q values
         outs = []
         for adv in advantages:
             outs.append(values + (adv - adv.mean())) # could also use .max() but original paper uses mean
-        
+        #print(["out_i: {}".format(outs[i].shape) for i in range(len(outs))])
         return outs

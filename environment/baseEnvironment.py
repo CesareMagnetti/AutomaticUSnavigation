@@ -1,11 +1,7 @@
-import torch, os, six, random
-from matplotlib import pyplot as plt
+import os, six, random
 import numpy as np
-from tqdm import tqdm
 from abc import abstractmethod, ABCMeta
-import matplotlib.gridspec as gridspec
 import concurrent.futures
-
 
 @six.add_metaclass(ABCMeta)
 class BaseEnvironment(object):
@@ -89,20 +85,26 @@ class BaseEnvironment(object):
             trajectory = []
         # start the random walk
         self.reset()
+        is_first_time_step = True
         for step in range(1, n_random_steps+1):
             # random action
             action = np.vstack([random.choice(np.arange(self.config.action_size)) for _ in range(self.config.n_agents)])
             # step the environment according to this random action
-            transition, next_slice = self.step(action)
+            transition, _ = self.step(action) # do not need the next_slice in random walk (only random actions)
             # add (state, action, reward, next_state) to buffer
             if buffer is not None:
-                buffer.add(transition)
+                if self.config.recurrent:
+                    buffer.add(transition, is_first_time_step = is_first_time_step)   
+                    is_first_time_step = False 
+                else:
+                    buffer.add(transition)
             # get the visual if needed
             if return_trajectory:
                 trajectory.append(self.state)
             # restart environment after max steps per episode are reached
             if step % self.config.n_steps_per_episode == 0:
                 self.reset()
+                is_first_time_step = True
         if return_trajectory:
             return trajectory
 

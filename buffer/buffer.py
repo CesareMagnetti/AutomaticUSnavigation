@@ -44,7 +44,7 @@ class ReplayBuffer:
 # ==== PRIORITIZED EXPERIENCE ====
 class PrioritizedReplayBuffer(ReplayBuffer):
     def __init__(self, buffer_size, batch_size, prob_alpha=0.6):
-        super(PrioritizedReplayBuffer, self).__init__(self, buffer_size, batch_size)
+        super(PrioritizedReplayBuffer, self).__init__(buffer_size, batch_size)
         self.prob_alpha = prob_alpha
         self.priorities = deque(maxlen=buffer_size)
     
@@ -90,7 +90,7 @@ class RecurrentPrioritizedReplayBuffer(PrioritizedReplayBuffer):
     pass a sequence of states to the qnetwork, process it with some recurrent/transformer architecture and we only want to predict the current action.
     More sophisticated versions would add recursive property to actions and rewards"""
     def __init__(self, buffer_size, batch_size, prob_alpha=0.6, history_length=10):
-        super(RecurrentPrioritizedReplayBuffer, self).__init__(self, buffer_size, batch_size, prob_alpha)
+        super(RecurrentPrioritizedReplayBuffer, self).__init__(buffer_size, batch_size, prob_alpha)
         self.history_length = history_length-1 #we want the full input to be of length history length, so we subtract 1
         # lookback will guide you to a particular entry in self.memory to recover useful information (state and next_state in our case)
         self.lookback = deque(maxlen=buffer_size)
@@ -107,11 +107,13 @@ class RecurrentPrioritizedReplayBuffer(PrioritizedReplayBuffer):
     
     def sample(self, beta=0.4):
         # sample normally
-        batch, weights, indices = super(RecurrentPrioritizedReplayBuffer, self).asampledd(beta)
+        batch, weights, indices = super(RecurrentPrioritizedReplayBuffer, self).sample(beta)
+        states, actions, rewards, next_states, dones = batch
         # lookup to previous time step for the history of states and next_states for each batch index
+        batch_states, batch_next_states = [], []
         for i, index in enumerate(indices):
             # initialize state next_state history with the sampled state and next state
-            states, next_states = [batch[0][i]], [batch[3][i]]
+            states_new, next_states_new = [states[i]], [next_states[i]]
             # perform n lookback steps to get previous states and next states
             lookback_index = index
             for t in range(self.history_length):
@@ -119,9 +121,19 @@ class RecurrentPrioritizedReplayBuffer(PrioritizedReplayBuffer):
                 if lookback_index != -1:
                     lookback_index = self.lookback[lookback_index]
                 # add new state and next_states, if we are at the start it will pad with the same state and next_state (sequences will be padded to the left this way)
-                states = self.memory[lookback_index][0] + states
-                next_states = self.memory[lookback_index][0] + next_states
+                states_new = [self.memory[lookback_index][0]] + states_new
+                next_states_new = [self.memory[lookback_index][0]] + next_states_new
             # replace the original single state and next_state entry in the batch with these sequential ones
-            batch[0][i] = states # B x L x 3 x 3
-            batch[3][i] = next_states # B x L x 3 x 3
+            batch_states+=states_new # B*L x 3 x 3
+            batch_next_states+=next_states_new # B*L x 3 x 3
+        # reform batch
+        batch = batch_states, actions, rewards, batch_next_states, dones
         return batch, weights, indices
+    
+    def save(self, fname):
+        super(RecurrentPrioritizedReplayBuffer, self).save(fname)
+        pickle.dump(self.lookback, open('{}_lookback.pkl'.format(fname), 'wb'))
+    
+    def load(self, fname):
+        super(RecurrentPrioritizedReplayBuffer, self).load(fname)
+        self.lookback = pickle.load(open('{}_lookback.pkl'.format(fname), 'rb'))

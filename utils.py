@@ -36,7 +36,7 @@ def train(config, local_model, target_model, name, wandb_entity="us_navigation",
         # 4. instanciate criterion
         criterion = setup_criterion(config)
         # 5. instanciate replay buffer(s) (one per environment)
-        buffers = setup_buffers(config, len(envs))
+        buffers = setup_buffers(config)
         # 6. instanciate visualizer
         visualizer = Visualizer(agent.results_dir)
 
@@ -55,7 +55,7 @@ def train(config, local_model, target_model, name, wandb_entity="us_navigation",
         wandb.watch(local_model, criterion, log="all", log_freq=config.log_freq)
         # 4. start training
         for episode in tqdm(range(config.starting_episode+1, config.n_episodes+1), desc="playing episode..."):
-                logs = agent.play_episode(envs, local_model, target_model, optimizer, criterion, buffers)
+                logs = agent.play_episode(envs, local_model, buffers)
                 logs["loss"] = agent.train(envs, local_model, target_model, optimizer, criterion, buffers,
                                            n_iter = int(config.n_steps_per_episode/config.update_every))
                 # send logs to weights and biases
@@ -118,11 +118,14 @@ def setup_optimizer(config, local_model):
         optimizer.load_state_dict(state_dict)
     return optimizer
 
-def setup_buffers(config, N):
+def setup_buffers(config):
     # instanciate buffers
     buffers = {}
     for vol_id in config.volume_ids.split(','):
-        buffers[vol_id] = PrioritizedReplayBuffer(config.buffer_size, config.batch_size, config.alpha)
+        if config.recurrent:
+            buffers[vol_id] = RecurrentPrioritizedReplayBuffer(config.buffer_size, config.batch_size, config.alpha, config.recurrent_history_len)
+        else:
+            buffers[vol_id] = PrioritizedReplayBuffer(config.buffer_size, config.batch_size, config.alpha)
     # load buffers if needed
     if config.load is not None:
         if config.load_name is not None:
