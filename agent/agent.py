@@ -83,7 +83,7 @@ class SingleVolumeAgent(BaseAgent):
             plane_history = deque(maxlen=self.config.recurrent_history_len)  # instanciate history at beginning of each episode
         # play an episode greedily
         with torch.no_grad():
-            for _ in tqdm(range(1, steps+1), desc="testing..."):
+            for _ in range(1, steps+1):
                 # if recurrent add plane to history
                 if self.config.recurrent:
                     plane_history.append(sample["plane"]) 
