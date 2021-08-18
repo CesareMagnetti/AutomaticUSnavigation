@@ -109,7 +109,6 @@ def gather_options(phase="train"):
         parser.add_argument('--train', action='store_true', default=False, help="training flag set to False.")
         parser.add_argument('--option_file', type=str, default="train_options.txt", help=".txt file from which we load options.")
         parser.add_argument('--n_runs', type=int, default=10, help="number of test runs to do")
-        parser.add_argument('--env_subsets', type=int, default=1, help="split test in chunks of environment to prevent going out of memory.")
         parser.add_argument('--n_steps', type=int, default=250, help="number of steps to test the agent for.")
         parser.add_argument('--fname', type=str, default="sample", help="name of the file to save (gif).")
         parser.add_argument('--render', action='store_true', help="if rendering test trajectories (WARNING: takes a while).")
