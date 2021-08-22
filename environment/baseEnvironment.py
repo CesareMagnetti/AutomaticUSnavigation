@@ -178,6 +178,14 @@ class BaseEnvironment(object):
             b /= norm
             c /= norm
             d /= norm
+        
+        # # ensure a is always positive to have consistency in the distance metric (a plane where all coeff are multiplied by -1 is still the same plane,
+        # # but if you take the distance between a plane and a plane*-1 you are going to get a large number)
+        # if a<0:
+        #     a*=-1
+        #     b*=-1
+        #     c*=-1
+        #     d*=-1
 
         return np.array([a, b, c, d])
         

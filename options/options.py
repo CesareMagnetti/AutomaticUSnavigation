@@ -58,7 +58,7 @@ def gather_options(phase="train"):
     parser.add_argument('--oobReward', type=float, default=0.01, help='penalize each agent if it steps outside the boundaries of the volume, see rewards/rewards.py for more info.')
     parser.add_argument('--areaRewardWeight', type=float, default=0.01, help='reward the agents if they stay far apart from each other (measuring area of spanned triangle), see rewards/rewards.py for more info.\n'\
                                                                              'This is to prevent them from clustering together, which will yield rough transitions.')
-    parser.add_argument('--stopReward', type=float, default=0, help="penalize the agents when they to stop on a bad frame, see rewards/rewards.py for more info.")
+    parser.add_argument('--stopReward', type=float, default=0., help="penalize the agents when they to stop on a bad frame, see rewards/rewards.py for more info.")
     parser.add_argument('--penalize_oob_pixels', action='store_true', help="penalize the agents when they sample slices significantly out of boundary, see rewards/rewards.py for more info.\n"\
                                                                            "It will give a penalty equal to the ratio of oob pixels in a sampled slice.")
 
@@ -173,6 +173,7 @@ def load_options(opt, load_filename=None):
                         value = value == "True"
                     # otherwise cast implicitely with type()()
                     else:
+                        #print(opt[key], value)
                         value = type(opt[key])(value)
                     load_opt[key] = value
     
