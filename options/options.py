@@ -51,7 +51,7 @@ def gather_options(phase="train"):
     parser.add_argument('--goal_centroids', type=str, default="2885,2897,2895", help="centroids of these anatomical tissues will define the goal plane.\n"\
                                                                                      "(default: LV+RV+RA: 2885,2897,2895). if multiple IDs separate by comma.")
     parser.add_argument('--planeDistanceRewardWeight', type=float, default=1., help='relative weight of the plane distance reward if present, see rewards/rewards.py for more info.\n')                                                                                 
-    parser.add_argument('--anatomyRewardWeiscreenshots_NLP_lectureght', type=float, default=1., help='relative weight of the anatomy reward if present, see rewards/rewards.py for more info.\n')
+    parser.add_argument('--anatomyRewardWeight', type=float, default=1., help='relative weight of the anatomy reward if present, see rewards/rewards.py for more info.\n')
     parser.add_argument('--anatomyRewardIDs', type=str, default="2885,2897,2895", help="segmentation IDs for the anatomical reward, see rewards/rewards.py for more info.\n"\
                                                                              "(default: LV+RV+RA: 2885,2897,2895). if multiple IDs separate by comma.")
     parser.add_argument('--incrementalAnatomyReward', action='store_true', default=True, help="whether the agent is rewarded on the improvement of anatomical content or on the current anatomical content.")
