@@ -79,7 +79,10 @@ def train(config, local_model, target_model, name, wandb_entity="us_navigation",
                         for _, log in out.items():
                             wandb.log(log["wandb"], commit=True)
                             # animate the trajectory followed by the agent in the current episode
-                            visualizer.render_frames(log["planes"], n_rows = 2 if agent.config.location_aware else 1, fname = "episode%d.gif"%episode)
+                            if agent.config.CT2US:
+                                visualizer.render_frames(log["planes"], log["planesCT"], n_rows = 2 if agent.config.location_aware else 1, fname = "episode%d.gif"%episode)
+                            else:
+                                visualizer.render_frames(log["planes"], n_rows = 2 if agent.config.location_aware else 1, fname = "episode%d.gif"%episode)
                         # upload file to wandb
                         wandb.save(os.path.join(visualizer.savedir, "episode%d.gif"%episode))
         # at the end of the training session save the model as .onnx to improve the open sourceness and exchange-ability amongst different ML frameworks

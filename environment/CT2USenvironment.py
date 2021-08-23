@@ -124,8 +124,8 @@ def mask_array(arr):
 
 def get_model(name, use_cuda=False):
     # instanciate cyclegan architecture used in CT2UStransfer (this is also the default architecture recommended by the authors)
-    model = ResnetGenerator(input_nc=1, output_nc=1, ngf=64, norm_layer=nn.InstanceNorm2d, use_dropout=False, n_blocks=9,
-                            padding_type='reflect', no_antialias=False, no_antialias_up=False, opt=None)
+    model = ResnetGenerator(input_nc=1, output_nc=1, ngf=64, norm_layer=nn.InstanceNorm2d, use_dropout=True, n_blocks=9,
+                            padding_type='reflect', no_antialias=True, no_antialias_up=False, opt=None)
     state_dict = torch.load(os.path.join(os.getcwd(), "environment", "CT2USmodels", "%s.pth"%name), map_location='cpu')
     print("loading: {} ...".format(os.path.join(os.getcwd(), "environment", "CT2USmodels", "%s.pth"%name)))
     model.load_state_dict(state_dict)

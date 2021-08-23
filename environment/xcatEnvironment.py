@@ -113,9 +113,13 @@ class SingleVolumeEnvironment(BaseEnvironment):
         X,Y,Z = XYZ
         plane = self.Volume[X,Y,Z]
         # mask out of boundary pixels to black
+        count_oob = 0
         if oob_black == True:
+            count_oob += sum((P<0).ravel())
             plane[P < 0] = 0
+            count_oob += sum((P>S).ravel())
             plane[P > S] = 0
+        out["count_oob"] = count_oob
         # normalize and unsqueeze array if needed.
         if preprocess:
             plane = plane[np.newaxis, np.newaxis, ...]/255
