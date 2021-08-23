@@ -49,7 +49,7 @@ def train(config, local_model, target_model, name, wandb_entity="us_navigation",
         # 2. initialize wandb for logging purposes
         if config.wandb in ["online", "offline"]:
                 wandb.login()
-        wandb.init(entity=wandb_entity, config=config, mode=config.wandb, name=config.name)
+        wandb.init(entity=wandb_entity, config=config, mode=config.wandb, name=config.name, settings=wandb.Settings(start_method="fork"))
         config = wandb.config # oddly this ensures wandb works smoothly
         # 3. tell wandb to watch what the model gets up to: gradients, weights, and loss
         wandb.watch(local_model, criterion, log="all", log_freq=config.log_freq)
