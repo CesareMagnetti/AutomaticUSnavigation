@@ -1,3 +1,12 @@
+"""Test script for multi-agent navigation towards a standard 4-Chamber view, can launch as:
+>>>
+nohup python test.py --name [experiment_name] --volume_ids samp0,samp1,samp2,samp3,samp4,samp5,samp6,samp7,samp8,samp9,samp10,samp11,samp12,samp13,samp14,
+samp15,samp16,samp17,samp18,samp19 --n_runs 2000 --load latest --fname quantitative_metrics > out_filename.out
+
+it will load training options from [--checkpoints_dir]/[experiment_name]/train_options.txt
+see options/option.py for more info on possible options
+"""
+
 from agent.agent import *
 from environment.xcatEnvironment import *
 from environment.CT2USenvironment import *
