@@ -66,7 +66,7 @@ def train(config, local_model, target_model, name, wandb_entity="us_navigation",
                 torch.save(optimizer.state_dict(), os.path.join(agent.checkpoints_dir, "latest_optimizer.pth"))
                 for vol_id, buffer in buffers.items():
                     buffer.save(os.path.join(config.checkpoints_dir, config.name, "latest_{}_".format(vol_id)))
-                if episode % max(1, int(config.save_freq)) == 0:
+                if episode % max(1, int(config.save_freq)) == 0 or episode == 1:
                         if not sweep:
                             print("saving model, optimizer and buffer...")
                             local_model.save(os.path.join(agent.checkpoints_dir, "episode%d.pth"%episode))

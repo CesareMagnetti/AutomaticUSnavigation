@@ -142,7 +142,7 @@ def get_input_optimizer(input_img):
     optimizer = optim.LBFGS([input_img.requires_grad_()])
     return optimizer
 
-def run_style_transfer(cnn, normalization_mean, normalization_std, content_img, style_img, input_img, num_steps=300, style_weight=10000, content_weight=1):
+def run_style_transfer(cnn, normalization_mean, normalization_std, content_img, style_img, input_img, num_steps=300, style_weight=1000000, content_weight=1):
     """Run the style transfer."""
 
     model, style_losses, content_losses = get_style_model_and_losses(cnn,
