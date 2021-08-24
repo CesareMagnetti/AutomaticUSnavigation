@@ -112,6 +112,7 @@ def gather_options(phase="train"):
         parser.add_argument('--n_steps', type=int, default=250, help="number of steps to test the agent for.")
         parser.add_argument('--fname', type=str, default="sample", help="name of the file to save (gif).")
         parser.add_argument('--render', action='store_true', help="if rendering test trajectories (WARNING: takes a while).")
+        parser.add_argument('--no_load', action='store_true', default=True, help="don't load any options when testing.")
     else:
         raise ValueError('unknown parameter phase: {}. expected: ("train"/"test").'.format(phase))
         

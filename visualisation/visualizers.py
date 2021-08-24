@@ -35,6 +35,7 @@ class Visualizer():
             else:
                 # trajectory was already 1 channel (still normalize it)
                 arg = np.array(arg)
+                print(arg.max(), arg.min())
                 new_args.append(np.array(arg))
         return new_args
 

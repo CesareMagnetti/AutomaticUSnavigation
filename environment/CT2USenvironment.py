@@ -105,9 +105,9 @@ def preprocessCT(CT):
 
 # draw a mask on US image
 def mask_array(arr):
-    assert arr.ndim == 2
-    sx, sy = arr.shape # H, W
-    mask = np.ones_like(arr)*1
+    #assert arr.ndim == 2 # on 1 channel images broadcasting will work
+    _,_,sx, sy = arr.shape # H, W
+    mask = np.ones((sx, sy))
     # Bottom circular shape
     rr, cc = circle(0, int(sy//2), sy-1)
     rr[rr >= sy] = sy-1

@@ -16,7 +16,7 @@ import SimpleITK as sitk
 import numpy as np
 import os
 from tqdm import tqdm
-
+import random
 import torchvision.transforms as transforms
 import torchvision.models as models
 
@@ -47,13 +47,15 @@ def gram_matrix(input):
     return G.div(a * b * c * d)
 
 class StyleLoss(nn.Module):
-    def __init__(self, target_feature):
+    def __init__(self, target_features):
         super(StyleLoss, self).__init__()
-        self.target = gram_matrix(target_feature).detach()
+        self.targets = [gram_matrix(target_feature).detach() for target_feature in target_features]
 
     def forward(self, input):
         G = gram_matrix(input)
-        self.loss = F.mse_loss(G, self.target)
+        self.loss = 0
+        for target in self.targets:
+            self.loss += F.mse_loss(G, target)
         return input
 
 cnn = models.vgg19(pretrained=True).features.to(device).eval()
@@ -79,7 +81,7 @@ class Normalization(nn.Module):
 content_layers_default = ['conv_4']
 style_layers_default = ['conv_1', 'conv_2', 'conv_3', 'conv_4', 'conv_5']
 
-def get_style_model_and_losses(cnn, normalization_mean, normalization_std, style_img, content_img, content_layers=content_layers_default, style_layers=style_layers_default):
+def get_style_model_and_losses(cnn, normalization_mean, normalization_std, style_imgs, content_img, content_layers=content_layers_default, style_layers=style_layers_default):
     cnn = copy.deepcopy(cnn)
 
     # normalization module
@@ -123,8 +125,8 @@ def get_style_model_and_losses(cnn, normalization_mean, normalization_std, style
 
         if name in style_layers:
             # add style loss:
-            target_feature = model(style_img).detach()
-            style_loss = StyleLoss(target_feature)
+            target_features = [model(style_img).detach() for style_img in style_imgs]
+            style_loss = StyleLoss(target_features)
             model.add_module("style_loss_{}".format(i), style_loss)
             style_losses.append(style_loss)
 
@@ -142,7 +144,7 @@ def get_input_optimizer(input_img):
     optimizer = optim.LBFGS([input_img.requires_grad_()])
     return optimizer
 
-def run_style_transfer(cnn, normalization_mean, normalization_std, content_img, style_img, input_img, num_steps=300, style_weight=1000000, content_weight=1):
+def run_style_transfer(cnn, normalization_mean, normalization_std, content_img, style_img, input_img, num_steps=300, style_weight=100000, content_weight=1):
     """Run the style transfer."""
 
     model, style_losses, content_losses = get_style_model_and_losses(cnn,
@@ -225,7 +227,7 @@ class AddGaussianNoise(object):
         return self.__class__.__name__ + '(mean={0}, std={1})'.format(self.mean, self.std)
 
 totensor = transforms.ToTensor()
-resize = transforms.Resize(256)
+resize = transforms.Resize(128)
 noise = AddGaussianNoise(mean=0, std=0.5)
 noise1 = AddGaussianNoise(mean=0, std=0.1)
 def NST_Volume(Volume, style_img, main_ax, init="content"):
@@ -234,7 +236,7 @@ def NST_Volume(Volume, style_img, main_ax, init="content"):
     print(Volume.shape)
     sx,sy,sz = Volume.shape
     # 2. loop through all slices along main_Axis, transfer the style and update slices in the Volume
-    for i in tqdm(range(100, sx), "transfering volume ..."):
+    for i in tqdm(range(sx), "transfering volume ..."):
         # 2.1 setup content and input images to tensor already sets image in (0,1) range
         content_img = noise1(totensor(Volume[i, ...])).unsqueeze(0).to(device, torch.float)
         if init == "content":
@@ -263,7 +265,7 @@ parser = argparse.ArgumentParser(description='train/test scripts to launch navig
 parser.add_argument('--dataroot', '-r',  type=str, default="/vol/biomedic3/hjr119/XCAT/generation2", help='path to the XCAT CT volumes.')
 parser.add_argument('--saveroot', '-s',  type=str, default="./XCAT_VOLUMES_NST/", help='path to the XCAT CT volumes.')
 parser.add_argument('--volume_ids', '-vol_ids', type=str, default='samp0', help='filename(s) of the CT volume(s) comma separated.')
-parser.add_argument('--style_img', '-si', type=str, default='./LIDC-IDRI-0139_70.jpg', help='path to style image.')
+parser.add_argument('--style_imgs', '-si', type=str, default='./styleCTimages', help='path to style images.')
 parser.add_argument('--main_ax', type=int, default=0, help="main_ax to follow when translating each slice of the volume.")
 parser.add_argument('--init', '-i',  type=str, default="content", help='initialize input image either to [content] or [random] image.')
 parser.add_argument('--pmin', type=int, default=150, help="pmin value for intensity_scaling() function.")
@@ -279,16 +281,17 @@ if __name__ == "__main__":
         # 1. load and preprocess the XCAT volume
         Volume = load(os.path.join(config.dataroot, vol_id+"_1_CT.nii.gz"), config.pmin, config.pmax, config.nmin, config.nmax)
         # 2. load and preprocess the style CT image
-        style_img_numpy = Image.open(config.style_img).convert('L')
-        style_img = resize(totensor(style_img_numpy)).unsqueeze(0).to(device, torch.float)
+        style_imgs = [os.path.join(config.style_imgs, f) for f in os.listdir(config.style_imgs) if "jpg" in f]
+        style_imgs_numpy = [Image.open(f).convert('L') for f in style_imgs]
+        style_img = [resize(totensor(style_img_numpy)).unsqueeze(0).to(device, torch.float) for style_img_numpy in style_imgs_numpy]
         # 3. transfer the volume
         TransferredVolume = NST_Volume(Volume, style_img, config.main_ax, init=config.init)
         # 4. save volume
         # ======== THESE PARAMS ARE TAKEN FROM vol/biomedic3/hjr119/XCAT/gen_xcat.py =======
         ZOOM = 3
-        BASE = 256/ZOOM # Default
+        BASE = 128/ZOOM # Default
         CM_TO_PIX = 0.3125*BASE
-        final_dim = 256
+        final_dim = 128
         dim_2_percentage_stop  = .65 # haut bas
         dim_2_percentage_start = 0. # 0. - 0.75
         plane_dim = int(np.ceil(final_dim / (dim_2_percentage_stop-dim_2_percentage_start)))
@@ -308,7 +311,7 @@ if __name__ == "__main__":
         writer.Execute(sitk_arr)
 
     # parallelize across all input volumes
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        futures = [executor.submit(main, vol_id) for vol_id in vol_ids]
-
-
+    # with concurrent.futures.ThreadPoolExecutor() as executor:
+    #     futures = [executor.submit(main, vol_id) for vol_id in vol_ids]
+    for vol_id in vol_ids:
+        main(vol_id)
