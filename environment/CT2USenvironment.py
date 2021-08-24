@@ -30,11 +30,17 @@ class CT2USSingleVolumeEnvironment(SingleVolumeEnvironment):
         sample["planeCT"] = preprocessCT(sample["plane"]).float().to(self.config.device)
         # transform the image to US (do not store gradients)
         with torch.no_grad():
-            sample["plane"] = self.CT2USmodel(sample["planeCT"]).detach().cpu().numpy()
+            plane = self.CT2USmodel(sample["planeCT"]).clamp(-1.0, 1.0).cpu().numpy()
+            # the cyclegan uses tanh, hence output is in (-1,1), need to bring it to (0,1)
+            # sample["planeUS"] = (plane +1)/2 # now its in (0,1)
+            sample["plane"] = (plane +1)/2 # now its in (0,1)
+            sample["plane"] = mask_array(sample["plane"]) # apply US mask
         # remove planeCT from GPU and convert to numpy
         sample["planeCT"] = sample["planeCT"].detach().cpu().numpy() 
         # both planes are already unsqueezed and normalized, if we did not want to preprocess the image then squeeze and multiply by 255 to undo preprocessing
+        # sample["plane"] = sample["plane"][np.newaxis, np.newaxis, ...]/255
         if not preprocess:
+            # sample["planeUS"] = sample["planeUS"].squeeze()*255
             sample["plane"] = sample["plane"].squeeze()*255
             sample["planeCT"] = sample["planeCT"].squeeze()*255
         return sample
@@ -63,7 +69,9 @@ class LocationAwareCT2USSingleVolumeEnvironment(LocationAwareSingleVolumeEnviron
         sample["planeCT"] = preprocessCT(sample["plane"][0, ...]).float().to(self.config.device)
         # transform the image to US (do not store gradients)
         with torch.no_grad():
-            plane = self.CT2USmodel(sample["planeCT"]).detach().cpu().numpy()
+            plane = self.CT2USmodel(sample["planeCT"]).clamp(-1.0, 1.0).cpu().numpy()
+            # the cyclegan uses tanh, hence output is in (-1,1), need to bring it to (0,1)
+            plane = (plane +1)/2 # now its in (0,1)
             # concatenate new plane with the positional embeddings
             #pos = [p/255 for p in np.split(sample["plane"], sample["plane"].shape[0], axis=0)]
             pos = sample["plane"][1:, ...]/255

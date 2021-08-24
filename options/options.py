@@ -150,7 +150,10 @@ def load_options(opt, load_filename=None):
     """ loads and overrides options in opt with an existing option .txt output"""
     if load_filename is None:
         load_filename = 'train_options.txt'
-    load_path = os.path.join(opt.checkpoints_dir, opt.name, load_filename)
+    if "/" in load_filename: # a path was given
+        load_path = load_filename
+    else: # a filename was given
+        load_path = os.path.join(opt.checkpoints_dir, opt.name, load_filename)
     print("loading options from: {} ...".format(load_path))
     with open(load_path, 'r') as opt_file:
         lines = opt_file.readlines()
@@ -163,7 +166,7 @@ def load_options(opt, load_filename=None):
             key = line.split(':')[0].strip()
             if key in opt:
                 # specify which keys we do NOT want to overwrite
-                if key not in ["load", "load_name", "wandb", "volume_ids", "n_runs", "n_steps", "fname", "render", "option_file", "easy_objective", "train"]:
+                if key not in ["load", "load_name", "wandb", "volume_ids", "n_runs", "n_steps", "fname", "render", "option_file", "easy_objective", "train", "name", "CT2US", "ct2us_model"]:
                     # get the str version of the value
                     value = line.split(':')[1].strip()
                     if "default" in value:

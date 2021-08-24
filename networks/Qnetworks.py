@@ -203,7 +203,7 @@ class RecurrentQnetwork(SimpleQNetwork):
         #print("x:", x.shape)
         # get batch size of inputs
         B = int(x.shape[0]/self.history_length)
-        print(B)
+        #print(B)
         # pass all frames through convolutional backbone and reshape for LSTM 
         y = self.cnn(x) # B*L x self.num_linear_features (B*L can be BIG: on 15 envs with B=64 and L=10 -> 15*64*10 = 9600)
         y = y.reshape(B, self.history_length, -1) # B x L x self.num_linear_features
