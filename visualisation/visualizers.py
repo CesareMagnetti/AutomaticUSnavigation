@@ -33,8 +33,9 @@ class Visualizer():
                 arg = np.split(arg, arg.shape[1], axis=1)
                 new_args.extend([a.squeeze()/a.max() for a in arg])
             else:
-                # trajectory was already 1 channel
-                new_args.append(np.array(arg))
+                # trajectory was already 1 channel (still normalize it)
+                arg = np.array(arg)
+                new_args.append(arg.squeeze()/arg.max())
         return new_args
 
     @staticmethod

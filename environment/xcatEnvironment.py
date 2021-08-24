@@ -216,7 +216,7 @@ class SingleVolumeEnvironment(BaseEnvironment):
             # shuffle rows of the goal state
             np.random.shuffle(self.goal_state)
             # add a random increment of +/- 10 pixels to this goal state
-            noise = np.random.randint(low=-20, high=20, size=(3,3))
+            noise = np.random.randint(low=-10, high=10, size=(3,3))
             self.state = self.goal_state + noise
         else:
             # sample a random plane (defined by 3 points) to start the episode from
