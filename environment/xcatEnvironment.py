@@ -22,10 +22,11 @@ class SingleVolumeEnvironment(BaseEnvironment):
         BaseEnvironment.__init__(self, config)
         # identify the volume used by this environment instance
         self.vol_id = vol_id
+
         # load queried CT volume
         itkVolume = sitk.ReadImage(os.path.join(self.dataroot, self.vol_id+"_1_CT.nii.gz"))
         Volume = sitk.GetArrayFromImage(itkVolume) 
-        # preprocess volume
+        # preprocess volume if queried (we do this on XCAT images, but not on CT and fakeCT images)
         if not config.no_preprocess:
             Volume = Volume/Volume.max()*255
             Volume = intensity_scaling(Volume, pmin=config.pmin, pmax=config.pmax, nmin=config.nmin, nmax=config.nmax)
@@ -36,6 +37,10 @@ class SingleVolumeEnvironment(BaseEnvironment):
         itkSegmentation = sitk.ReadImage(os.path.join(self.dataroot, self.vol_id+"_1_SEG.nii.gz"))
         Segmentation = sitk.GetArrayFromImage(itkSegmentation)
         self.Segmentation = Segmentation
+
+        # if we are performing navigation on fakeCTs, we randomize the intensities at each episode
+        if config.randomize_intensities:
+            self.random_intensity_scaling = RandIntensity() # see defaults value at bottom of file
 
         # get an approximated location for the 4-chamber slice using the centroids
         self.set_goal([int(i) for i in config.goal_centroids.split(",")])
@@ -195,6 +200,10 @@ class SingleVolumeEnvironment(BaseEnvironment):
         next_state = state + increment
         # observe the next plane and get the reward from segmentation map
         sample = self.sample_plane(state=next_state, return_seg=True, preprocess=preprocess)
+        # if needed randomize intensities
+        if self.config.randomize_intensities:
+            sample["plane"] = self.random_intensity_scaling(sample["plane"])
+        # get rewards
         rewards = self.get_reward(sample["seg"], next_state, increment)
         # update the current state
         self.state = next_state
@@ -249,6 +258,10 @@ class SingleVolumeEnvironment(BaseEnvironment):
         # reset the oscillation monitoring
         if self.config.termination == "oscillate":
             self.oscillates.history.clear()
+        # if we are using randomized intensitities (for navigation in fakeCT) reset the intensity ranges
+        if self.config.randomize_intensities:
+            self.random_intensity_scaling.reset_intensities()
+
 
 # ======== LOCATION AWARE ENV ==========
 class LocationAwareSingleVolumeEnvironment(SingleVolumeEnvironment):
@@ -368,6 +381,30 @@ class LocationAwareSingleVolumeEnvironment(SingleVolumeEnvironment):
         return out
 
 # ==== HELPER FUNCTIONS ====
+class RandIntensity(object):
+    """CLass handle to apply random intensity scaling (helps with CT navigation as CT images comes with different intensity scalings)
+    """
+    def __init__(self, min_range=100, max_range=200, imin=0, imax=255):
+        self.rmin = min_range
+        self.rmax = max_range
+        self.imin = imin
+        self.imax = imax
+        self.reset_intensities()
+
+    def reset_intensities(self, trange=None, tmin=None):
+        if not (trange and tmin):
+            trange = int(np.randint(low=self.rmin, high=self.rmax, size=(1,)))
+            tmin = int(np.randint(low=self.imin, high=self.imax-trange, size=(1,)))
+        self.trange = trange
+        self.tmin = tmin
+
+    def __call__(self, arr):
+        #set to 0-1 range
+        arr = (arr-arr.min())/(arr.max()-arr.min())
+        #set to new range (0-255)
+        arr = arr * self.trange + self.tmin
+        return arr
+
 def get_centroid(data, seg_id, norm=False):
     volume = data == seg_id # Get binary map for the specified seg id
     values = np.array(ndimage.measurements.center_of_mass(volume), dtype=np.int)

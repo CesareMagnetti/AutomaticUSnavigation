@@ -16,7 +16,7 @@ import SimpleITK as sitk
 import numpy as np
 import os
 from tqdm import tqdm
-import random
+import scipy.signal
 import torchvision.transforms as transforms
 import torchvision.models as models
 
@@ -313,18 +313,17 @@ if __name__ == "__main__":
     def main(vol_id, i):
         # 1. load and preprocess the XCAT volume
         Volume, Spacing = load(os.path.join(config.dataroot, vol_id), config.pmin, config.pmax, config.nmin, config.nmax)
-        print(Spacing)
+
         # 2. load and preprocess the style CT image
         style_imgs_all = [os.path.join(config.style_imgs, f) for f in os.listdir(config.style_imgs) if "jpg" in f]
         # random.shuffle(style_imgs_all) # randomly shuffle list
         style_imgs_all.sort() # sort list
-        # # randomly sample from list
-        # style_imgs = random.sample(style_imgs_all, int(0.1*len(style_imgs_all)))
         # slice 5% of list according to position (assumes we have 20 volumes in total)
         style_imgs = style_imgs_all[i*int(0.05*len(style_imgs_all)):(i+1)*int(0.05*len(style_imgs_all))]
         print("using style images: ", style_imgs)
         style_imgs_numpy = [Image.open(f).convert('L') for f in style_imgs]
         style_imgs = [resize(totensor(style_img_numpy)).unsqueeze(0).to(device, torch.float) for style_img_numpy in style_imgs_numpy]
+        
         # 3. transfer the volume
         if config.average_axis:
             # average volume synthetized along each axis
@@ -334,23 +333,17 @@ if __name__ == "__main__":
 
         else:
             TransferredVolume = NST_Volume(Volume, style_imgs, config.main_ax, init=config.init, window=config.window)
-        # 4. save volume
-        # # ======== THESE PARAMS ARE TAKEN FROM vol/biomedic3/hjr119/XCAT/gen_xcat.py =======
-        # # MODIFIED 256 TO 128!!!
-        # ZOOM = 3
-        # BASE = 128/ZOOM # Default
-        # CM_TO_PIX = 0.3125*BASE
-        # final_dim = 128
-        # dim_2_percentage_stop  = .65 # haut bas
-        # dim_2_percentage_start = 0. # 0. - 0.75
-        # plane_dim = int(np.ceil(final_dim / (dim_2_percentage_stop-dim_2_percentage_start)))
-        # pix_res = CM_TO_PIX/plane_dim
-        # # =======================================================================================
+
+        # 4. smoothen the volume to reduce misalignment artifacts
+        Volume_smooth3 = scipy.signal.savgol_filter(TransferredVolume, window_length=5, polyorder=1, deriv=0, delta=1.0, axis=0, mode='interp', cval=0.0)
+        # normalize smoothened volume
+        Volume_smooth3 = ((Volume_smooth3-Volume_smooth3.min())/(Volume_smooth3.max()-Volume_smooth3.min())*255).astype(np.uint8)
+
+        # 5. save volume
         # Transforming numpy to sitk
         print("Transforming numpy to sitk...")
         sitk_arr = sitk.GetImageFromArray(TransferredVolume)
         sitk_arr.SetSpacing(Spacing)
-
         # Save sitk to nii.gz file
         print("Saving sitk to .nii.gz file...", )
         writer = sitk.ImageFileWriter()
@@ -359,8 +352,13 @@ if __name__ == "__main__":
         writer.SetFileName(os.path.join(config.saveroot, vol_id+"newSpacing_1_CT.nii.gz"))
         writer.Execute(sitk_arr)
 
-    # parallelize across all input volumes
+    # parallelize across all input volumes (split in two blocks to not exceed vram/ram) (does not work for some reason, maybe to much ram needed)
+    # vol_ids1 = vol_ids[:len(vol_ids)//4]
     # with concurrent.futures.ThreadPoolExecutor() as executor:
-    #     futures = [executor.submit(main, vol_id) for vol_id in vol_ids]
+    #     futures = [executor.submit(main, vol_id) for vol_id in vol_ids1]
+    # vol_ids2 = vol_ids[len(vol_ids)//2:]
+    # with concurrent.futures.ThreadPoolExecutor() as executor:
+    #     futures = [executor.submit(main, vol_id) for vol_id in vol_ids2]
     for i, vol_id in enumerate(vol_ids):
+        print("[{}]/[{}]".format(i+1, len(vol_id)))
         main(vol_id, i)
