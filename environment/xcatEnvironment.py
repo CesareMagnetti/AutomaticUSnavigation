@@ -2,7 +2,7 @@ from environment.baseEnvironment import BaseEnvironment
 from rewards.rewards import *
 import numpy as np
 import SimpleITK as sitk
-import torch, os
+import os
 import scipy.ndimage as ndimage
 
 class SingleVolumeEnvironment(BaseEnvironment):
@@ -118,13 +118,12 @@ class SingleVolumeEnvironment(BaseEnvironment):
         X,Y,Z = XYZ
         plane = self.Volume[X,Y,Z]
         # mask out of boundary pixels to black
-        count_oob = 0
         if oob_black == True:
-            count_oob += sum((P<0).ravel())
             plane[P < 0] = 0
-            count_oob += sum((P>S).ravel())
             plane[P > S] = 0
-        out["count_oob"] = count_oob
+        # if needed randomize intensities
+        if self.config.randomize_intensities:
+            plane = self.random_intensity_scaling(plane)
         # normalize and unsqueeze array if needed.
         if preprocess:
             plane = plane[np.newaxis, np.newaxis, ...]/255
@@ -200,9 +199,6 @@ class SingleVolumeEnvironment(BaseEnvironment):
         next_state = state + increment
         # observe the next plane and get the reward from segmentation map
         sample = self.sample_plane(state=next_state, return_seg=True, preprocess=preprocess)
-        # if needed randomize intensities
-        if self.config.randomize_intensities:
-            sample["plane"] = self.random_intensity_scaling(sample["plane"])
         # get rewards
         rewards = self.get_reward(sample["seg"], next_state, increment)
         # update the current state
@@ -225,7 +221,7 @@ class SingleVolumeEnvironment(BaseEnvironment):
             # shuffle rows of the goal state
             np.random.shuffle(self.goal_state)
             # add a random increment of +/- 10 pixels to this goal state
-            noise = np.random.randint(low=-10, high=10, size=(3,3))
+            noise = np.random.randint(low=-20, high=20, size=(3,3))
             self.state = self.goal_state + noise
         else:
             # sample a random plane (defined by 3 points) to start the episode from
@@ -366,6 +362,9 @@ class LocationAwareSingleVolumeEnvironment(SingleVolumeEnvironment):
         # concatenate binary location maps along channel diension
         pos = self.sample_agents_position(state, X, Y, Z)
         plane = np.concatenate((plane[np.newaxis, ...], pos), axis=0)
+        # if needed randomize intensities
+        if self.config.randomize_intensities:
+            plane = self.random_intensity_scaling(plane)
         # normalize and unsqueeze array if needed.  if necessary.
         if preprocess:
             plane = plane[np.newaxis, ...]/255
@@ -391,12 +390,9 @@ class RandIntensity(object):
         self.imax = imax
         self.reset_intensities()
 
-    def reset_intensities(self, trange=None, tmin=None):
-        if not (trange and tmin):
-            trange = int(np.randint(low=self.rmin, high=self.rmax, size=(1,)))
-            tmin = int(np.randint(low=self.imin, high=self.imax-trange, size=(1,)))
-        self.trange = trange
-        self.tmin = tmin
+    def reset_intensities(self):
+        self.trange = int(np.random.randint(low=self.rmin, high=self.rmax, size=(1,)))
+        self.tmin = int(np.random.randint(low=self.imin, high=self.imax-self.trange, size=(1,)))
 
     def __call__(self, arr):
         #set to 0-1 range
