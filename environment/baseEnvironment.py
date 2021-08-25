@@ -124,8 +124,8 @@ class BaseEnvironment(object):
             # extract corresponding slice
             main_ax = np.argmax([abs(a), abs(b), abs(c)])
             # if easy objective then force the main_Ax to be zero
-            if self.config.easy_objective:
-                main_ax = 0
+            # if self.config.easy_objective:
+            #     main_ax = 0
                 
             if main_ax == 0:
                 Y, Z = np.meshgrid(np.arange(sy), np.arange(sz), indexing='ij')

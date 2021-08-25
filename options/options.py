@@ -112,7 +112,7 @@ def gather_options(phase="train"):
         parser.add_argument('--n_steps', type=int, default=250, help="number of steps to test the agent for.")
         parser.add_argument('--fname', type=str, default="sample", help="name of the file to save (gif).")
         parser.add_argument('--render', action='store_true', help="if rendering test trajectories (WARNING: takes a while).")
-        parser.add_argument('--no_load', action='store_true', default=True, help="don't load any options when testing.")
+        parser.add_argument('--no_load', action='store_true', default=False, help="don't load any options when testing.")
     else:
         raise ValueError('unknown parameter phase: {}. expected: ("train"/"test").'.format(phase))
         
@@ -149,12 +149,17 @@ def print_options(opt, parser, save = True):
 
 def load_options(opt, load_filename=None):
     """ loads and overrides options in opt with an existing option .txt output"""
+    if opt.load_name is None:
+        load_name = opt.name
+    else:
+        load_name = opt.load_name
     if load_filename is None:
         load_filename = 'train_options.txt'
     if "/" in load_filename: # a path was given
         load_path = load_filename
     else: # a filename was given
-        load_path = os.path.join(opt.checkpoints_dir, opt.name, load_filename)
+        load_path = os.path.join(opt.checkpoints_dir, load_name, load_filename)
+        
     print("loading options from: {} ...".format(load_path))
     with open(load_path, 'r') as opt_file:
         lines = opt_file.readlines()
