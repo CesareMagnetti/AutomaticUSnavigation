@@ -5,17 +5,21 @@ def setup_networks(config):
     # setup correct channels if we are location aware
     nchannels = 1 if not config.location_aware else 4
     # 1. instanciate the Qnetworks
-    if config.default_Q is None:
-        params = [(nchannels, config.load_size, config.load_size), config.action_size, config.n_agents, config.n_blocks_Q,
-                   config.downsampling_Q, config.n_features_Q, not config.no_dropout_Q, not config.no_batchnorm_Q]
-    elif config.default_Q.lower() == "small":
+    if config.default_Q.lower() == "small":
+        if config.load_size == 128:
+            first_downsampling = 2
+        elif config.load_size == 256:
+            first_downsampling = 4
+        else:
+            raise ValueError('small Q-network was only thought for load_size == 128 or load_size == 256')
         params = [(nchannels, config.load_size, config.load_size), config.action_size, config.n_agents, 3,
-                   4, 32, not config.no_dropout_Q, not config.no_batchnorm_Q]
+                   4, 32, not config.no_dropout_Q, not config.no_batchnorm_Q, first_downsampling]
     elif config.default_Q.lower() == "large":
         params = [(nchannels, config.load_size, config.load_size), config.action_size, config.n_agents, 6,
                    2, 4, not config.no_dropout_Q, not config.no_batchnorm_Q]
     else:
-        raise ValueError('unknown param ``--default_Q``: {}. available options: [small, large]'.format(config.default_Q))
+        params = [(nchannels, config.load_size, config.load_size), config.action_size, config.n_agents, config.n_blocks_Q,
+                   config.downsampling_Q, config.n_features_Q, not config.no_dropout_Q, not config.no_batchnorm_Q]
     # instanciate and send to gpu
     if config.dueling:
         if config.recurrent:
@@ -95,7 +99,7 @@ class SimpleQNetwork(nn.Module):
     """
     very simple CNN backbone followed by N heads, one for each agent.
     """
-    def __init__(self, state_size, action_size, Nheads, Nblocks=6, downsampling=2, num_features=4, dropout=True, batchnorm=True):
+    def __init__(self, state_size, action_size, Nheads, Nblocks=6, downsampling=2, num_features=4, dropout=True, batchnorm=True, first_downsampling = None):
         """
         params
         ======
@@ -108,12 +112,15 @@ class SimpleQNetwork(nn.Module):
                                 will go from num_features*2**i  -->  num_features*2**(i+1)
             dropout (bool): if you want to use dropout (p=0.5)
             batchnorm (bool): if you want to use batch normalization
+            first_downsampling (int): downsampling factor of the first convolutional bock (if None than downsampling is used)
                                  
         """
         super(SimpleQNetwork, self).__init__()
 
         # build convolutional backbone
-        cnn = [ConvBlock(state_size[0], num_features, 3, downsampling, 1, dropout, batchnorm)]
+        if first_downsampling is None:
+            first_downsampling = downsampling
+        cnn = [ConvBlock(state_size[0], num_features, 3, first_downsampling, 1, dropout, batchnorm)]
         for i in range(Nblocks-1):
             cnn.append(ConvBlock(num_features*2**i, num_features*2**(i+1), 3, downsampling, 1, dropout, batchnorm))
         cnn.append(nn.Conv2d(num_features*2**(i+1), num_features*2**(i+2), 3, downsampling, 1))
@@ -155,9 +162,9 @@ class SimpleQNetwork(nn.Module):
 class DuelingQNetwork(SimpleQNetwork):
     """Implements Dueling Q learning rather than standard Q Learning, inherits most of the Q network
     """
-    def __init__(self, state_size, action_size, Nheads, Nblocks=6, downsampling=2, num_features=4, dropout=True, batchnorm=True):
+    def __init__(self, state_size, action_size, Nheads, Nblocks=6, downsampling=2, num_features=4, dropout=True, batchnorm=True, first_downsampling=None):
         # initialize Q-network
-        super(DuelingQNetwork, self).__init__(state_size, action_size, Nheads, Nblocks, downsampling, num_features, dropout, batchnorm)
+        super(DuelingQNetwork, self).__init__(state_size, action_size, Nheads, Nblocks, downsampling, num_features, dropout, batchnorm, first_downsampling)
         
         # set the value stream as a linear head on top of the parent convolutional block
         self.value_stream = HeadBlock(self.num_linear_features, 1, dropout, batchnorm)
@@ -183,9 +190,9 @@ class DuelingQNetwork(SimpleQNetwork):
     
 class RecurrentQnetwork(SimpleQNetwork):
     "adds a recurrent LSTM layer after the convolutional block to consider an history of time-frames when making a decision."
-    def __init__(self, state_size, action_size, Nheads, Nblocks=6, downsampling=2, num_features=4, dropout=True, batchnorm=True, history_length = 10):       
+    def __init__(self, state_size, action_size, Nheads, Nblocks=6, downsampling=2, num_features=4, dropout=True, batchnorm=True, first_downsampling=None, history_length=10):       
         # initialize Q-network
-        super(RecurrentQnetwork, self).__init__(state_size, action_size, Nheads, Nblocks, downsampling, num_features, dropout, batchnorm)
+        super(RecurrentQnetwork, self).__init__(state_size, action_size, Nheads, Nblocks, downsampling, num_features, dropout, batchnorm, first_downsampling)
         
         # initialize the recurrent layer
         self.history_length = history_length
@@ -220,9 +227,9 @@ class RecurrentQnetwork(SimpleQNetwork):
 
 class RecurrentDuelingQNetwork(DuelingQNetwork):
     "adds a recurrent LSTM layer after the convolutional block to consider an history of time-frames when making a decision."
-    def __init__(self, state_size, action_size, Nheads, Nblocks=6, downsampling=2, num_features=4, dropout=True, batchnorm=True, history_length = 10):       
+    def __init__(self, state_size, action_size, Nheads, Nblocks=6, downsampling=2, num_features=4, dropout=True, batchnorm=True, first_downsampling=None, history_length=10):       
         # initialize Q-network
-        super(RecurrentDuelingQNetwork, self).__init__(state_size, action_size, Nheads, Nblocks, downsampling, num_features, dropout, batchnorm)
+        super(RecurrentDuelingQNetwork, self).__init__(state_size, action_size, Nheads, Nblocks, downsampling, num_features, dropout, batchnorm, first_downsampling)
 
         # initialize the recurrent layer
         self.history_length = history_length
