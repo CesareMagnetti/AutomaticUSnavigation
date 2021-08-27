@@ -174,7 +174,7 @@ def load_options(opt, load_filename=None):
             key = line.split(':')[0].strip()
             if key in opt:
                 # specify which keys we do NOT want to overwrite
-                if key not in ["load", "load_name", "wandb", "volume_ids", "n_runs", "n_steps", "fname", "render", "option_file", "easy_objective", "train", "name", "CT2US", "ct2us_model"]:
+                if key not in ["load", "load_name", "wandb", "dataroot", "load_size", "volume_ids", "n_runs", "n_steps", "fname", "render", "option_file", "easy_objective", "train", "name", "randomize_intensities", "no_preprocess"]:
                     # get the str version of the value
                     value = line.split(':')[1].strip()
                     if "default" in value:
