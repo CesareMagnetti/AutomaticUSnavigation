@@ -46,16 +46,33 @@ pip install -r requirements
 
 2. if you don't want to integrate the script with weights and biases run scripts with the additional ```--wandb disabled``` flag.
 
-3. run our default untrained agent on the default volume. It will save a 250 steps animation to ```./results/untrained_agent/test/sample_0.gif```.
+3. train our best agents on 15 XCAT volumes (you must generate these yourself). It will save results to ```./results/``` and checkpoints to ```./checkpoints/```. Then test the agent 100 times on all available volumes (in our case 20) and generate some test trajectories to visualize results.
 
 ```bash
-python test_visual.py --name untrained_agent --n_runs 1 --n_steps 250
+python train.py --name 15Volume_both_terminateOscillate_Recurrent --dataroot [path/to/XCAT/volumes] --volume_ids samp0,samp1,samp2,samp3,samp4,samp5,samp6,samp7,samp8,samp9,samp10,samp11,samp12,samp13,samp14 --anatomyRewardWeight 1 --planeDistanceRewardWeight 1 --incrementalAnatomyReward --termination oscillate --exploring_steps 0 --recurrent --batch_size 8 --update_every 15
+
+python test.py --name 15Volume_both_terminateOscillate_Recurrent --dataroot [path/to/XCAT/volumes] --volume_ids samp0,samp1,samp2,samp3,samp4,samp5,samp6,samp7,samp8,samp9,samp10,samp11,samp12,samp13,samp14,
+samp15,samp16,samp17,samp18,samp19 --n_runs 2000 --load latest --fname quantitative_metrics
+
+python test_trajectory.py --name 15Volume_both_terminateOscillate_Recurrent --dataroot [path/to/XCAT/volumes] --volume_ids samp15,samp16,samp17,samp18,samp19 --n_steps 250 --load latest
 ```
 
-3. train our default agent on the default volume to navigate towards a 2D view that maximizes the number of pixels in the Left Ventricle (or any other anatomical structure). In this case we are training for 2000 episodes of 250 steps each (takes approximately 3 hours on a GTX TITANX NVIDIA 12GB).
+3. train our best agent on the fake CT volumes (we can then test on real CT data).
 
 ```bash
-python train.py -r --name default_agent --n_episodes 2000 --n_steps_per_episode 250
+python make_XCAT_volumes_realistic.py --dataroot [path/to/XCAT/volumes] --saveroot [path/to/save/fakeCT/volumes] --volume_ids samp0,samp1,samp2,samp3,samp4,samp5,samp6,samp7,samp8,samp9,samp10,samp11,samp12,samp13,samp14,
+samp15,samp16,samp17,samp18,samp19 --style_imgs [path/to/style/realCT/images] --window 3
+
+python train.py --name 15Volume_CT_both_terminateOscillate_Recurrent_smoothedVolumes_lessSteps --volume_ids samp0,samp1,samp2,samp3,samp4,samp5,samp6,samp7,samp8,samp9,samp10,samp11,samp12,samp13,samp14 --anatomyRewardWeight 1 --planeDistanceRewardWeight 1 --incrementalAnatomyReward --termination oscillate --exploring_steps 0 --recurrent --batch_size 8 --update_every 15 --dataroot [path/to/fakeCT/volumes] --load_size 128 --no_preprocess --n_steps_per_episode 125 --buffer_size 25000 --randomize_intensities
+
+python test_trajectory.py --name 15Volume_CT_both_terminateOscillate_Recurrent_smoothedVolumes_lessSteps --dataroot [path-to/realCT/volumes] --volume_ids 128_LIDC-IDRI-0101,128_LIDC-IDRI-0102 --load latest --n_steps 125 --no_preprocess --realCT
+```
+
+4. train our best agent on fake US environment
+```bash
+python train.py --name 15Volumes_easyObjective20_CT2USbestModel_bestRL --easy_objective --n_steps_per_episode 50 --buffer_size 10000 --volume_ids samp0,samp1,samp2,samp3,samp4,samp5,samp6,samp7,samp8,samp9,samp10,samp11,samp12,samp13,samp14 --dataroot [path/to/XCAT/volumes(must rotate)] --anatomyRewardWeight 1 --planeDistanceRewardWeight 1 --incrementalAnatomyReward --termination oscillate --exploring_steps 0 --batch_size 8 --update_every 12 --recurrent --CT2US --ct2us_model_name bestCT2US
+
+python test_trajectory.py --name 15Volumes_easyObjective20_CT2USbestModel_bestRL --dataroot [path/to/XCAT/volumes(must rotate)] --volume_ids samp15,samp16,samp17,samp18,samp19 --easy_objective --n_steps 50 --CT2US --ct2us_model_name bestCT2US --load latest
 ```
 
 
