@@ -7,15 +7,9 @@ Investigating automatic navigation towards standard US views integrating MARL wi
 The agent is in control of moving 3 points in a 3D volume, which will sample the corresponding plane. We aim to model the agent to learn to move towards 4-chamber views. We define such views as the plane passing through the centroids of the Left Ventricle, Right Ventricle and Right Atrium (XCAT volumes come with semantic segmentations). We reward the agent when it moves towards this goal plane, and when the number of pixels of tissues of interest present in the current plane increase (see rewards/rewards.py fro more details). Furthermore, we add some good-behaviour inducing reards: we maximize the area of the triangle spanned by the agents and we penalize the agents for moving outside of the volumes boundaries. The former encourages smooth transitions (if the agents are clustered close together we would get abrupt transitions) the latter makes sure that the agents stay within the boundaries of the environment. The following animation shows agents navigating towards a 4-Chamber view on a test XCAT volume, agents are initialized randomly within the volume.
 
 <div align="center">
-    <img width="100%" src="readme_images/untrained_agent.gif", alt="untrained agent acting greedily."
+    <img width="100%" src="readme_images/standardXCATfullTrajectory.gif", alt="trained agent acting greedily."
 	title="untrained agent acting greedily." ><br>
-	Fig 1: An untrained agent acting greedily. Our full agent consists of 3 sub-agents, each controlling the movement of 1 point in a 3D space. As each agent 	  moves around the 3 points will sample a particular view of the CT volume.<br>
-</div>
-
-<div align="center">
-    <img width="100%" src="readme_images/default_agent.gif", alt="untrained agent acting greedily."
-	title="untrained agent acting greedily." ><br>
-	Fig 2: Our default agent acting greedily for 250 steps after random initialization. Our full agent consists of 3 sub-agents, each controlling the movement of 1 point in a 3D space. As each agent moves around the 3 points will sample a particular view of the CT volume.<br>
+	Fig 1: Our best agent acting greedily for 250 steps after random initialization. Our full agent consists of 3 sub-agents, each controlling the movement of 1 	     point in a 3D space. As each agent moves around the 3 points will sample a particular view of the CT volume.<br>
 </div>
 
 ## usage
