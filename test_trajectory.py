@@ -1,6 +1,6 @@
 """Test trajectory script for multi-agent navigation towards a standard 4-Chamber view, can launch as:
 >>>
-python test_trajectory.py --name [experiment_name] --volume_ids samp15,samp16,samp17,samp18,samp19 --n_steps 250
+python test_trajectory.py --name [experiment_name] --volume_ids samp15,samp16,samp17,samp18,samp19 --n_steps 250 --load latest
 
 it will load training options from [--checkpoints_dir]/[experiment_name]/train_options.txt
 see options/option.py for more info on possible options
@@ -9,6 +9,7 @@ see options/option.py for more info on possible options
 from agent.agent import *
 from environment.xcatEnvironment import *
 from environment.CT2USenvironment import *
+from environment.realCTenvironment import *
 from visualisation.visualizers import Visualizer
 from networks.Qnetworks import setup_networks
 from options.options import gather_options, print_options, load_options
@@ -34,7 +35,9 @@ if __name__ == "__main__":
     # test trajectory on each environment
     for i, vol_id in enumerate(config.volume_ids.split(",")):
         # setup environment
-        if not config.location_aware and not config.CT2US:
+        if config.realCT:
+            env = realCTtestEnvironment(config, vol_id=vol_id)
+        elif not config.location_aware and not config.CT2US:
             env = SingleVolumeEnvironment(config, vol_id=vol_id)
         elif not config.location_aware and config.CT2US: 
             env = CT2USSingleVolumeEnvironment(config, vol_id=vol_id)
@@ -42,7 +45,8 @@ if __name__ == "__main__":
             env = LocationAwareSingleVolumeEnvironment(config, vol_id=vol_id)
         else:
             env = LocationAwareCT2USSingleVolumeEnvironment(config, vol_id=vol_id)  
-        env.set_reward() # this starts the reward logs with the config file parsed before
+        if not config.realCT:
+            env.set_reward() # this starts the reward logs with the config file parsed before
 
         # pass in the corresponding subset of envs to test
         logs = agent.test_agent(config.n_steps, env, qnetwork)

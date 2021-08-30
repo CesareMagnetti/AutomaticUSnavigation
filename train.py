@@ -13,7 +13,10 @@ if __name__=="__main__":
         config.use_cuda = torch.cuda.is_available()
         config.device = torch.device("cuda:{}".format(config.gpu_device) if config.use_cuda else "cpu")
         print_options(config, parser)
-
+        
+        # assert we are not using clinical data (we can only train on XCAT/fakeCT data with our framework)
+        assert not config.realCT, "can only test on real clinical data."
+        
         # manual seeds
         torch.manual_seed(config.seed)
         np.random.seed(config.seed)

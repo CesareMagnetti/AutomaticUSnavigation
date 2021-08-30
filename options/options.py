@@ -73,6 +73,8 @@ def gather_options(phase="train"):
                                                                     "achieved by concatenating binary location maps along the channels dimension of the input image to the qnetwork.")
     # flag for CT2US pipeline (will convert slices to US before feeding them to RL agents)
     parser.add_argument('--CT2US', action='store_true', help="will launch full pipeline navigating in US domain. Else navigation will take place in the CT/XCAT volume.")
+    # flag for realCT inputs. We can evaluate our agents on actual clinical data
+    parser.add_argument('--realCT', action='store_true', help="tells the framework we are using actual clinical data (we have no segmentations available etc.)")
     # flag if randomizing image instensities on an episode basis, useful when navigatin in fakeCT to ensure diverse intensity range for generalization
     parser.add_argument('--randomize_intensities', action='store_true', default=False, help="whether to randomize intensities each time we reset the environment class, usefull for generalization in fakeCT navigation.")
 

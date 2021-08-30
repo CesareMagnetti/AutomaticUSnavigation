@@ -106,22 +106,26 @@ class SingleVolumeAgent(BaseAgent):
                 sample = next_sample
                 # add logs to output dict  
                 out["planes"].append(sample["plane"].squeeze())
-                out["segs"].append(sample["seg"].squeeze())
+                if not self.config.realCT:
+                    out["segs"].append(sample["seg"].squeeze())
                 if self.config.CT2US:
                     out["planesCT"].append(sample["planeCT"].squeeze())
                 out["states"].append(env.state)
-                ## for cumulative logs uncomment the next line and comment the one after
-                #out["logs"].append({log: r for log,r in env.logs.items()})
-                out["logs"].append({log: r for log,r in env.current_logs.items()})
+                # when we test on clinical data we do not know the rewards we get
+                if not self.config.realCT:
+                    #out["logs"].append({log: r for log,r in env.logs.items()}) # cumulative logs
+                    out["logs"].append({log: r for log,r in env.current_logs.items()})
                 # if done, end episode early and pad logs with terminal state
                 if transition[-1]:
                     break
-        # add logs for wandb to out
-        out["wandb"] = {log+"_test": r for log,r in env.logs.items()}
-        # re-arrange the logs key so that it goes from list of dicts to dict of lists
-        out["logs"] = {k: [dic[k] for dic in out["logs"]] for k in out["logs"][0]}
-        # get the mean rewards collected by the agents in the episode
-        out["logs_mean"] = {key: np.mean(val) for key, val in out["logs"].items()}
+        # when we test on clinical data we do not know the rewards we get
+        if not self.config.realCT:
+            # add logs for wandb to out
+            out["wandb"] = {log+"_test": r for log,r in env.logs.items()}
+            # re-arrange the logs key so that it goes from list of dicts to dict of lists
+            out["logs"] = {k: [dic[k] for dic in out["logs"]] for k in out["logs"][0]}
+            # get the mean rewards collected by the agents in the episode
+            out["logs_mean"] = {key: np.mean(val) for key, val in out["logs"].items()}
         return out
     
     def train(self, env, buffer, local_model, target_model, optimizer, criterion, n_iter=1):

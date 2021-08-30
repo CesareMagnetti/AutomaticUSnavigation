@@ -10,6 +10,7 @@ see options/option.py for more info on possible options
 from agent.agent import *
 from environment.xcatEnvironment import *
 from environment.CT2USenvironment import *
+from environment.realCTenvironment import *
 from networks.Qnetworks import setup_networks
 from options.options import gather_options, print_options, load_options
 import torch, os
@@ -42,24 +43,28 @@ if __name__ == "__main__":
     n_runs = max(int(config.n_runs/len(config.volume_ids.split(","))), 1)
     for i, vol_id in enumerate(config.volume_ids.split(",")):
         # setup environment
-        if not config.location_aware and not config.CT2US:
+        if config.realCT:
+            env = realCTtestEnvironment(config, vol_id=vol_id)
+        elif not config.location_aware and not config.CT2US:
             env = SingleVolumeEnvironment(config, vol_id=vol_id)
         elif not config.location_aware and config.CT2US: 
             env = CT2USSingleVolumeEnvironment(config, vol_id=vol_id)
         elif config.location_aware and not config.CT2US:
             env = LocationAwareSingleVolumeEnvironment(config, vol_id=vol_id)
         else:
-            env = LocationAwareCT2USSingleVolumeEnvironment(config, vol_id=vol_id)  
-        env.set_reward() # this starts the reward logs with the config file parsed before
+            env = LocationAwareCT2USSingleVolumeEnvironment(config, vol_id=vol_id)
+        if not config.realCT:  
+            env.set_reward() # this starts the reward logs with the config file parsed before
         # for each test run
         for run in tqdm(range(n_runs), 'testing vol: {} ...'.format(vol_id)):
             print("test run: [{}]/[{}] env_subset [{}/[{}]".format(run+1, n_runs, i+1, len(config.volume_ids.split(","))))
             # pass in the corresponding subset of envs to test
             logs = agent.test_agent(config.n_steps, env, qnetwork)
             # store quantitative metrics
-            rewards_anatomy[vol_id].append(logs["logs_mean"]["anatomyReward"])
-            rewards_plane_distance[vol_id].append(logs["logs_mean"]["planeDistanceReward"])
-            distance_from_goal[vol_id].append(env.rewards["planeDistanceReward"].get_distance_from_goal(env.get_plane_coefs(*logs["states"][-1])))
+            if not config.realCT:
+                rewards_anatomy[vol_id].append(logs["logs_mean"]["anatomyReward"])
+                rewards_plane_distance[vol_id].append(logs["logs_mean"]["planeDistanceReward"])
+                distance_from_goal[vol_id].append(env.rewards["planeDistanceReward"].get_distance_from_goal(env.get_plane_coefs(*logs["states"][-1])))
             # save terminal plane reached
             if config.location_aware:
                 terminal_plane = logs["planes"][-1][0, ...].squeeze()
@@ -69,56 +74,57 @@ if __name__ == "__main__":
                 os.makedirs(os.path.join(agent.results_dir, "test", "terminal_planes", vol_id))
             plt.imsave(os.path.join(agent.results_dir, "test", "terminal_planes", vol_id, "sample{}.png".format(run)), terminal_plane, cmap="Greys_r")
 
-    # extract mean and std for every vol_id, save terminal planes reached by the agent to disk
-    for vol_id in config.volume_ids.split(","):
-        rewards_anatomy[vol_id] = (np.mean(rewards_anatomy[vol_id]), np.std(rewards_anatomy[vol_id]))
-        rewards_plane_distance[vol_id] = (np.mean(rewards_plane_distance[vol_id]), np.std(rewards_plane_distance[vol_id]))
-        distance_from_goal[vol_id] = (np.mean(distance_from_goal[vol_id]), np.std(distance_from_goal[vol_id]))   
-              
-    # print quantitative logs to .txt file
-    message = "\t\t\t\t===== AVERAGE QUANTITATIVE RESULTS FOR : {} ===== \n\n".format(config.name)
-    for vol_id in config.volume_ids.split(","):
-        message += "{:10}plane distance reward: {:.4f} +/- {:.4f}\tanatomy reward: {:.4f} +/- {:.4f}\tdistance from goal: {:.4f} +/- {:.4f}\n".format(vol_id, 
-                                                                                                                                                      rewards_plane_distance[vol_id][0],
-                                                                                                                                                      rewards_plane_distance[vol_id][1],
-                                                                                                                                                      rewards_anatomy[vol_id][0],
-                                                                                                                                                      rewards_anatomy[vol_id][1],
-                                                                                                                                                      distance_from_goal[vol_id][0],
-                                                                                                                                                      distance_from_goal[vol_id][1])  
-    # get relative difference in mean performance between train and testing volumes
-    plane_mean_train = np.mean([rewards_plane_distance[vol_id][0] for vol_id in config.volume_ids.split(",")[:15]])  
-    anatomy_mean_train = np.mean([rewards_anatomy[vol_id][0] for vol_id in config.volume_ids.split(",")[:15]])
-    distance_mean_train = np.mean([distance_from_goal[vol_id][0] for vol_id in config.volume_ids.split(",")[:15]])
+    if not config.realCT:
+        # extract mean and std for every vol_id, save terminal planes reached by the agent to disk
+        for vol_id in config.volume_ids.split(","):
+            rewards_anatomy[vol_id] = (np.mean(rewards_anatomy[vol_id]), np.std(rewards_anatomy[vol_id]))
+            rewards_plane_distance[vol_id] = (np.mean(rewards_plane_distance[vol_id]), np.std(rewards_plane_distance[vol_id]))
+            distance_from_goal[vol_id] = (np.mean(distance_from_goal[vol_id]), np.std(distance_from_goal[vol_id]))   
+                
+        # print quantitative logs to .txt file
+        message = "\t\t\t\t===== AVERAGE QUANTITATIVE RESULTS FOR : {} ===== \n\n".format(config.name)
+        for vol_id in config.volume_ids.split(","):
+            message += "{:10}plane distance reward: {:.4f} +/- {:.4f}\tanatomy reward: {:.4f} +/- {:.4f}\tdistance from goal: {:.8f} +/- {:.8f}\n".format(vol_id, 
+                                                                                                                                                        rewards_plane_distance[vol_id][0],
+                                                                                                                                                        rewards_plane_distance[vol_id][1],
+                                                                                                                                                        rewards_anatomy[vol_id][0],
+                                                                                                                                                        rewards_anatomy[vol_id][1],
+                                                                                                                                                        distance_from_goal[vol_id][0],
+                                                                                                                                                        distance_from_goal[vol_id][1])  
+        # get relative difference in mean performance between train and testing volumes
+        plane_mean_train = np.mean([rewards_plane_distance[vol_id][0] for vol_id in config.volume_ids.split(",")[:15]])  
+        anatomy_mean_train = np.mean([rewards_anatomy[vol_id][0] for vol_id in config.volume_ids.split(",")[:15]])
+        distance_mean_train = np.mean([distance_from_goal[vol_id][0] for vol_id in config.volume_ids.split(",")[:15]])
 
-    plane_mean_test = np.mean([rewards_plane_distance[vol_id][0] for vol_id in config.volume_ids.split(",")[15:]])  
-    anatomy_mean_test = np.mean([rewards_anatomy[vol_id][0] for vol_id in config.volume_ids.split(",")[15:]])
-    distance_mean_test = np.mean([distance_from_goal[vol_id][0] for vol_id in config.volume_ids.split(",")[15:]])
-                                                                                                                                           
-    plane_mean = plane_mean_test/plane_mean_train*100
-    anatomy_mean = anatomy_mean_test/anatomy_mean_train*100
-    distance_mean = distance_mean_test/distance_mean_train*100
+        plane_mean_test = np.mean([rewards_plane_distance[vol_id][0] for vol_id in config.volume_ids.split(",")[15:]])  
+        anatomy_mean_test = np.mean([rewards_anatomy[vol_id][0] for vol_id in config.volume_ids.split(",")[15:]])
+        distance_mean_test = np.mean([distance_from_goal[vol_id][0] for vol_id in config.volume_ids.split(",")[15:]])
+                                                                                                                                            
+        plane_mean = plane_mean_test/plane_mean_train*100
+        anatomy_mean = anatomy_mean_test/anatomy_mean_train*100
+        distance_mean = distance_mean_test/distance_mean_train*100
 
-    # print mean performances
-    message += "\n\nmean performances: plane distance reward: {:.4f}\tanatomy reward: {:.4f}\tdistance from goal: {:.4f}\n".format(plane_mean,
-                                                                                                                                   anatomy_mean,
-                                                                                                                                   distance_mean)
-    # print output in latex code 
-    message += "\t\t\t\t===== LATEX TABLE CODE FOR : {} ===== \n\n".format(config.name)
-    for vol_id in config.volume_ids.split(","):
-        message += "{:10}->\t${:.4f} \pm {:.4f}$ & ${:.4f} \pm {:.4f}$ & ${:.4f} \pm {:.4f}$\\\n".format(vol_id, 
-                                                                                                         rewards_plane_distance[vol_id][0],
-                                                                                                         rewards_plane_distance[vol_id][1],
-                                                                                                         rewards_anatomy[vol_id][0],
-                                                                                                         rewards_anatomy[vol_id][1],
-                                                                                                         distance_from_goal[vol_id][0],
-                                                                                                         distance_from_goal[vol_id][1]) 
-    message += "\n\nmean performances: \t${:.1f}$ & ${:.1f}$ & ${:.1f}$\\\n".format(plane_mean,
-                                                                                    anatomy_mean,
-                                                                                    distance_mean)    
+        # print mean performances
+        message += "\n\nmean performances: plane distance reward: {:.4f}\tanatomy reward: {:.4f}\tdistance from goal: {:.8f}\n".format(plane_mean,
+                                                                                                                                    anatomy_mean,
+                                                                                                                                    distance_mean)
+        # print output in latex code 
+        message += "\t\t\t\t===== LATEX TABLE CODE FOR : {} ===== \n\n".format(config.name)
+        for vol_id in config.volume_ids.split(","):
+            message += "{:10}->\t${:.4f} \pm {:.4f}$ & ${:.4f} \pm {:.4f}$ & ${:.8f} \pm {:.8f}$\\\n".format(vol_id, 
+                                                                                                            rewards_plane_distance[vol_id][0],
+                                                                                                            rewards_plane_distance[vol_id][1],
+                                                                                                            rewards_anatomy[vol_id][0],
+                                                                                                            rewards_anatomy[vol_id][1],
+                                                                                                            distance_from_goal[vol_id][0],
+                                                                                                            distance_from_goal[vol_id][1]) 
+        message += "\n\nmean performances: \t${:.2f}$ & ${:.2f}$ & ${:.2f}$\\\n".format(plane_mean,
+                                                                                        anatomy_mean,
+                                                                                        distance_mean)    
 
-    name = config.name
-    if config.easy_objective: name += "easy_objective"
-    else: name += "full_objective"
-    with open(os.path.join(agent.results_dir, "test", "{}.txt".format(name)), "wt") as out_file:
-        out_file.write(message)
-        out_file.write('\n')
+        name = config.name
+        if config.easy_objective: name += "easy_objective"
+        else: name += "full_objective"
+        with open(os.path.join(agent.results_dir, "test", "{}.txt".format(name)), "wt") as out_file:
+            out_file.write(message)
+            out_file.write('\n')
