@@ -17,7 +17,7 @@ We than upgrade our pipeline generating realistic fake CT volumes using Neural S
 
 <div align="center">
     <img width="30%" src="readme_images/trajectoryFakeCT.gif", alt="trained agent acting greedily on fake CT."
-	title="untrained agent acting greedily." ><br>
+	title="untrained agent acting greedily." >
     <img width="30%" src="readme_images/trajectoryLIDC-IDRI.gif", alt="trained agent acting greedily on real CT."
 	title="untrained agent acting greedily." ><br>
 	Fig 2: Left) Our best agent acting greedily on a test fake CT volume for 125 steps after random initialization. Right) same agents tested on clinical CT data.<br>
