@@ -8,7 +8,7 @@ The agent is in control of moving 3 points in a 3D volume, which will sample the
 
 <div align="center">
     <img width="40%" src="readme_images/standardXCATfullTrajectory.gif", alt="trained agent acting greedily."
-	title="untrained agent acting greedily." ><br>
+	title="trained agent acting greedily." ><br>
 	Fig 1: Our best agent acting greedily for 250 steps after random initialization. Our full agent consists of 3 sub-agents, each controlling the movement of 1 	     point in a 3D space. As each agent moves around the 3 points will sample a particular view of the CT volume.<br>
 </div>
 
@@ -17,11 +17,21 @@ We than upgrade our pipeline generating realistic fake CT volumes using Neural S
 
 <div align="center">
     <img width="30%" src="readme_images/trajectoryFakeCT.gif", alt="trained agent acting greedily on fake CT."
-	title="untrained agent acting greedily." >
+	title="trained agent acting greedily on fake CT." >
     <img width="30%" src="readme_images/trajectoryLIDC-IDRI.gif", alt="trained agent acting greedily on real CT."
-	title="untrained agent acting greedily." ><br>
+	title="trained agent acting greedily on real CT." ><br>
 	Fig 2: Left) Our best agent acting greedily on a test fake CT volume for 125 steps after random initialization. Right) same agents tested on clinical CT data.<br>
 </div>
+
+## example of agents navigating on synthetic US
+We couple our navigation framework with a CycleGAN that transforms XCAT slices into US images on the fly. Our CycleGAN model is not perfect yet and we are limited to contrain the agent within +/- 20 pixels from the goal plane. Note that we invert intensities of the XCAT images to facilitate the translation process.
+
+<div align="center">
+    <img width="40%" src="readme_images/trajectoryUS.gif", alt="trained agent acting greedily on US environment."
+	title="trained agent acting greedily on US environment." ><br>
+	Fig 1: Our best agent acting greedily for 50 steps after initialization within +/- 20 pixels from the goal plane. The XCAT volume is used a proxy for navigation in US domain. <br>
+</div>
+
 ## usage
 
 1. clone the repo and install dependencies
