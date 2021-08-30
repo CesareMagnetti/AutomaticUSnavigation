@@ -349,7 +349,7 @@ if __name__ == "__main__":
         writer = sitk.ImageFileWriter()
         if not os.path.exists(config.saveroot):
             os.makedirs(config.saveroot)
-        writer.SetFileName(os.path.join(config.saveroot, vol_id+"newSpacing_1_CT.nii.gz"))
+        writer.SetFileName(os.path.join(config.saveroot, vol_id+"_1_CT.nii.gz"))
         writer.Execute(sitk_arr)
 
     # parallelize across all input volumes (split in two blocks to not exceed vram/ram) (does not work for some reason, maybe to much ram needed)
