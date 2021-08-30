@@ -16,9 +16,9 @@ The agent is in control of moving 3 points in a 3D volume, which will sample the
 We than upgrade our pipeline generating realistic fake CT volumes using Neural Style Transfer on our XCAT volumes. We will generate volumes which aim to resemble CT texture while retaining XCAT content. We train the agents in the same manner on this new simulated environment and we test practicality both on unseen fake CT volumes and on clinical volumes from LIDC-IDRI dataset. 
 
 <div align="center">
-    <img width="40%" src="readme_images/standardXCATfullTrajectory.gif", alt="trained agent acting greedily on fake CT."
+    <img width="40%" src="readme_images/trajectoryFakeCT.gif", alt="trained agent acting greedily on fake CT."
 	title="untrained agent acting greedily." ><br>
-    <img width="40%" src="readme_images/standardXCATfullTrajectory.gif", alt="trained agent acting greedily on real CT."
+    <img width="40%" src="readme_images/trajectoryLIDC-IDRI.gif", alt="trained agent acting greedily on real CT."
 	title="untrained agent acting greedily." ><br>
 	Fig 2: Left) Our best agent acting greedily on a test fake CT volume for 125 steps after random initialization. Right) same agents tested on clinical CT data.<br>
 </div>
